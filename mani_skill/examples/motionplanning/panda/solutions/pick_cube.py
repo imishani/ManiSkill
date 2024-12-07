@@ -41,19 +41,19 @@ def solve(env: PickCubeEnv, seed=None, debug=False, vis=False):
     # Reach
     # -------------------------------------------------------------------------- #
     reach_pose = grasp_pose * sapien.Pose([0, 0, -0.05])
-    planner.move_to_pose_with_screw(reach_pose)
-
-    # -------------------------------------------------------------------------- #
-    # Grasp
-    # -------------------------------------------------------------------------- #
-    planner.move_to_pose_with_screw(grasp_pose)
-    planner.close_gripper()
+    # planner.move_to_pose_with_screw(reach_pose)
+    #
+    # # -------------------------------------------------------------------------- #
+    # # Grasp
+    # # -------------------------------------------------------------------------- #
+    # planner.move_to_pose_with_screw(grasp_pose)
+    res = planner.close_gripper()
 
     # -------------------------------------------------------------------------- #
     # Move to goal pose
     # -------------------------------------------------------------------------- #
-    goal_pose = sapien.Pose(env.goal_site.pose.sp.p, grasp_pose.q)
-    res = planner.move_to_pose_with_screw(goal_pose)
+    # goal_pose = sapien.Pose(env.goal_site.pose.sp.p, grasp_pose.q)
+    # res = planner.move_to_pose_with_screw(goal_pose)
 
     planner.close()
     return res

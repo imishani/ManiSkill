@@ -1,4 +1,4 @@
-# compilation and distribution
+#compilation and distribution
 __pycache__
 _ext
 *.pyc
@@ -44,3 +44,5 @@ imgui.ini
 # testing
 .coverage*
 htmlcov/
+
+*/img
