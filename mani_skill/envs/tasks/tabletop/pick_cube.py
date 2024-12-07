@@ -5,7 +5,7 @@ import sapien
 import torch
 
 import mani_skill.envs.utils.randomization as randomization
-from mani_skill.agents.robots import Fetch, Panda
+from mani_skill.agents.robots import Fetch, Panda, RidgebackUR10e
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
@@ -33,8 +33,8 @@ class PickCubeEnv(BaseEnv):
     """
 
     _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/PickCube-v1_rt.mp4"
-    SUPPORTED_ROBOTS = ["panda", "fetch"]
-    agent: Union[Panda, Fetch]
+    SUPPORTED_ROBOTS = ["panda", "fetch", "ridgebackur10e"]
+    agent: Union[Panda, Fetch, RidgebackUR10e]
     cube_half_size = 0.02
     goal_thresh = 0.025
 

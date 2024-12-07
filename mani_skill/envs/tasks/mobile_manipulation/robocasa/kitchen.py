@@ -26,7 +26,7 @@ from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
     "RoboCasaKitchen-v1", max_episode_steps=100, asset_download_ids=["RoboCasa"]
 )
 class RoboCasaKitchenEnv(BaseEnv):
-    SUPPORTED_ROBOTS = ["fetch", "none"]
+    SUPPORTED_ROBOTS = ["fetch", "none", "ridgebackur10e"]
     SUPPORTED_REWARD_MODES = ["none"]
     """
     Initialized a Base Kitchen environment.
