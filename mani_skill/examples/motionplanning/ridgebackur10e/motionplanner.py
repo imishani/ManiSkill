@@ -103,7 +103,7 @@ class RidgebackUR10ePlanningSolver:
         #                         joint_acc_limits=np.ones(9) * self.joint_acc_limits)
 
         pose = mplib.pymp.Pose(p=self.base_pose.p, q=self.base_pose.q)
-        print(f"Setting base pose {pose}")
+        # print(f"Setting base pose {pose}")
         planner.set_base_pose(pose)
         # planner.update_from_simulation()
         return planner
@@ -291,7 +291,7 @@ class RidgebackUR10ePlanningSolver:
             if ik_succ == "Success": # and not collision_checker(ik_solution): alreasy checks for collisions!
                 ee_samples.append((ee_pose, ik_solution))
         assert len(ee_samples) > 0, "\033[91mNo valid grasp poses found\033[0m"
-        print(f"Found {len(ee_samples)} valid grasp poses")
+        # print(f"Found {len(ee_samples)} valid grasp poses")
         return ee_samples
 
 
