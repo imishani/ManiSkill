@@ -16,4 +16,4 @@ from .ur_e import UR10e
 from .widowx import *
 from .xarm import XArm7Ability
 from .xmate3 import Xmate3Robotiq
-from .ridgeback_ur10e import RidgebackUR10e
+from .ridgeback_ur10e import RidgebackUR10e, StaticRidgebackUR10e
