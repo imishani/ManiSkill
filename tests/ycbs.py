@@ -1,35 +1,118 @@
 import json
 import random
+import torch
 import numpy as np
 import itertools
 import os
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
+from transforms3d.quaternions import mat2quat
+
+from mani_skill import PACKAGE_ASSET_DIR, ASSET_DIR
+from mani_skill.utils.building.actors.ycb import _load_ycb_dataset, YCB_DATASET
+from mani_skill.utils.io_utils import load_json
+# euler_to_quat
+from mani_skill.utils.geometry.rotation_conversions import euler_angles_to_matrix, axis_angle_to_quaternion
+from transforms3d.euler import euler2quat, quat2mat, euler2mat, quat2euler
+
+kitchen_keywords = [
+    'pitcher',
+    'mug',
+    'cup',
+    'plate',
+    'bowl',
+    'spatula',
+    'knife',
+    'fork',
+    'spoon',
+]
+
+YCB_ASSETS_DIR = ASSET_DIR / "assets/mani_skill2_ycb/models"
+
+TABLE_POSE = {
+    "position": [-0.12, 0, -(0.9196429 * 1.5 / 1.75)],
+    "rotation": euler2quat(0, 0, np.pi / 2).tolist()
+}
+
+ycb_dataset = {}
 
 class ItemPlacer:
-    def __init__(self, table_width=1.0, table_depth=0.8, table_height=0.7):
+    def __init__(self,
+                 items,
+                 table_dimensions : tuple[float, float, float] = (2.0724673, 1.0363512, 0.78826535),
+                 ):
         """
         Initialize item placer with table dimensions and tracking.
-
-        :param table_width: Width of the table (x-axis)
-        :param table_depth: Depth of the table (y-axis)
-        :param table_height: Height of the table surface
+        items: dict of item model IDs and their data (aabbs, densities, etc.)
+        table_dimensions: (width, depth, height) of the table
         """
-        self.table_width = table_width
-        self.table_depth = table_depth
-        self.table_height = table_height
+        self.table_width = table_dimensions[0]
+        self.table_depth = table_dimensions[1]
+        self.table_height = table_dimensions[2]
         self.placed_items = []
 
         # Item size estimates (approximate bounding box diagonals)
-        self.item_sizes = {
-            '002_master_chef_can': 0.1,
-            '044_flat_screwdriver': 0.2,
-            '072-e_toy_airplane': 0.3,
-            '048_hammer': 0.4,
-            '073-e_lego_duplo': 0.15
-        }
+        self.items = items
 
-    def check_collision(self, x, y, item_model):
+    def check_aabb_overlap(self, center1, aabb1, center2, aabb2, rotation1, rotation2):
+        # TODO: check if this function correct
+        # Compute center and half-extents
+        half_extents1 = np.array([aabb1['max'][0] - aabb1['min'][0], aabb1['max'][1] - aabb1['min'][1]]) / 2
+        half_extents2 = np.array([aabb2['max'][0] - aabb2['min'][0], aabb2['max'][1] - aabb2['min'][1]]) / 2
+
+        # Compute vertices of both AABBs
+        def get_aabb_vertices(center, extents, rot):
+            # Compute corner points without rotation
+            corners = np.array([
+                [-extents[0], -extents[1]],
+                [extents[0], -extents[1]],
+                [extents[0], extents[1]],
+                [-extents[0], extents[1]]
+            ])
+
+            # Rotate corners
+            rotated_corners = (rot @ corners.T).T
+
+            # Translate rotated corners
+            return rotated_corners + center[:2]
+
+        # Get vertices
+        vertices1 = get_aabb_vertices(center1, half_extents1, rotation1[:2, :2])
+        vertices2 = get_aabb_vertices(center2, half_extents2, rotation2[:2, :2])
+
+        # Project vertices onto separating axes
+        def project_vertices(vertices, axis):
+            return [np.dot(v, axis) for v in vertices]
+
+        # Axes to test (box normals)
+        axes = [
+            np.array([1, 0]),  # x-axis
+            np.array([0, 1]),  # y-axis
+        ]
+
+        # Add rotated axes
+        def get_rotated_normals(rot):
+            return [
+                rot @ np.array([1, 0]),
+                rot @ np.array([0, 1])
+            ]
+
+        axes.extend(get_rotated_normals(rotation1[:2, :2]))
+        axes.extend(get_rotated_normals(rotation2[:2, :2]))
+
+        # Test each axis
+        for axis in axes:
+            # Project vertices onto this axis
+            proj1 = project_vertices(vertices1, axis)
+            proj2 = project_vertices(vertices2, axis)
+
+            # Check for separation
+            if max(proj1) < min(proj2) or max(proj2) < min(proj1):
+                return False
+
+        return True
+
+    def check_collision(self, x, y, yaw, item_model):
         """
         Check if the proposed position collides with already placed items.
 
@@ -38,16 +121,19 @@ class ItemPlacer:
         :param item_model: Model ID of the item
         :return: Boolean indicating if placement is clear
         """
-        item_size = self.item_sizes.get(item_model, 0.2)
-
-        for placed_x, placed_y, placed_size, _ in self.placed_items:
-            # Calculate distance between item centers
-            dist = np.sqrt((x - placed_x)**2 + (y - placed_y)**2)
-
-            # If distance is less than sum of their radii, it's a collision
-            if dist < (item_size + placed_size) / 2:
-                return False
-        return True
+        aabb_item = self.items[item_model]['aabb']
+        center_item = np.array([x, y, self.table_height + (aabb_item['max'][2] - aabb_item['min'][2])/2])
+        rotation_item = euler_angles_to_matrix(torch.tensor([0, 0, yaw]), 'ZYX').cpu().numpy()
+        for placed_x, placed_y, placed_yaw, placed_aabb, _ in self.placed_items:
+            rotation_placed = euler_angles_to_matrix(torch.tensor([[0, 0, placed_yaw]]), 'ZYX').squeeze(0).cpu().numpy()
+            center_placed = np.array([placed_x, placed_y, self.table_height + (placed_aabb['max'][2] - placed_aabb['min'][2])/2])
+            return self.check_aabb_overlap(center_item, aabb_item, center_placed, placed_aabb, rotation_item, rotation_placed)
+        #     x_dist = abs(x - placed_x)
+        #     y_dist = abs(y - placed_y)
+        #     if (x_dist < ((aabb_item['max'][0] - aabb_item['min'][0] + placed_size['max'][0] - placed_size['min'][0]) / 2)) and \
+        #         (y_dist < ((aabb_item['max'][1] - aabb_item['min'][1] + placed_size['max'][1] - placed_size['min'][1]) / 2)):
+        #         return False
+        return False
 
     def place_item(self, item_model):
         """
@@ -56,45 +142,39 @@ class ItemPlacer:
         :param item_model: Model ID of the item
         :return: [x, y, z] position
         """
-        item_size = self.item_sizes.get(item_model, 0.2)
+        item_aabb = self.items[item_model]['aabb']
 
         # Maximum attempts to place an item
         max_attempts = 100
         for _ in range(max_attempts):
             # Random x and y within table bounds, accounting for item size
+            # TODO: consider item size and orientation for better placement (e.g., x is not based only on item width,
+
             x = random.uniform(
-                -self.table_width/2 + item_size/2,
-                self.table_width/2 - item_size/2
+                -self.table_width/2 + (item_aabb['max'][0] - item_aabb['min'][0])/2 + 0.15,
+                self.table_width/2 - (item_aabb['max'][0] - item_aabb['min'][0])/2 - 0.15
             )
             y = random.uniform(
-                -self.table_depth/2 + item_size/2,
-                self.table_depth/2 - item_size/2
+                -self.table_depth/2 + (item_aabb['max'][1] - item_aabb['min'][1])/2 + 0.1,
+                self.table_depth/2 - (item_aabb['max'][1] - item_aabb['min'][1])/2 - 0.1
             )
 
-            # Check for collisions
-            if self.check_collision(x, y, item_model):
-                # Store placed item with its position and size
-                self.placed_items.append((x, y, item_size, item_model))
-                return [x, y, self.table_height]
+            yaw = random.uniform(0, 2*np.pi)
 
-        raise ValueError(f"Could not place item {item_model} without collision")
+            # Check for collisions
+            if not self.check_collision(x, y, yaw, item_model):
+                print(f"Placed item {item_model} at ({x:.2f}, {y:.2f})")
+                # Store placed item with its position and size
+                self.placed_items.append((x, y, yaw, item_aabb, item_model))
+                return [x, y, self.table_height + (item_aabb['max'][2] - item_aabb['min'][2])/2, yaw]
+
+        # raise ValueError(f"Could not place item {item_model} without collision")
+        return False
 
 def is_kitchen_item(model_id):
     """
     Determine if a model is a kitchen-related item.
     """
-    kitchen_keywords = [
-        'master_chef_can',
-        'mug',
-        'cup',
-        'plate',
-        'bowl',
-        'spatula',
-        'knife',
-        'fork',
-        'spoon',
-        'measuring'
-    ]
     return any(keyword in model_id.lower() for keyword in kitchen_keywords)
 
 def generate_random_rep_points(num_points=16):
@@ -120,23 +200,23 @@ def visualize_scene(scene, save_path=None):
     plt.figure(figsize=(10, 8))
 
     # Plot table
-    table_width = 1.0
-    table_depth = 0.8
+    table_width = 2.0724673
+    table_depth = 1.0363512
     plt.gca().add_patch(Rectangle(
-        (-table_width/2, -table_depth/2),
+        (TABLE_POSE['position'][0] - table_width/2, TABLE_POSE['position'][1] - table_depth/2),
         table_width, table_depth,
+        angle=np.rad2deg(np.pi / 2),
+        rotation_point='center',
         fill=False,
         edgecolor='brown',
         linewidth=2
     ))
 
     # Color mapping for different items
+    color_options = ['red', 'blue', 'green', 'orange', 'purple', 'cyan', 'magenta', 'yellow']
     color_map = {
-        '002_master_chef_can': 'red',
-        '044_flat_screwdriver': 'blue',
-        '072-e_toy_airplane': 'green',
-        '048_hammer': 'purple',
-        '073-e_lego_duplo': 'orange'
+        actor['model_id']: color_options[i % len(color_options)]
+        for i, actor in enumerate(scene['actors'])
     }
 
     # Plot items
@@ -148,11 +228,23 @@ def visualize_scene(scene, save_path=None):
         color = color_map.get(model_id, 'gray')
 
         # Plot item as a circle
-        item_size = ItemPlacer().item_sizes.get(model_id, 0.2)
-        plt.scatter(x, y, c=color, s=500, alpha=0.7, edgecolors='black')
+        item = ycb_dataset['model_data'][model_id]
+        item_size = item['bbox']
+        quaternion = actor['pose'][3:]
+        angle = quat2euler(quaternion, 'szyx')[0]
 
+        plt.gca().add_patch(plt.Rectangle(
+            (x - (item_size['max'][0] - item_size['min'][0])/2, y - (item_size['max'][1] - item_size['min'][1])/2),
+            item_size['max'][0] - item_size['min'][0],
+            item_size['max'][1] - item_size['min'][1],
+            angle=np.rad2deg(angle),
+            rotation_point='center',
+            fill=True,
+            color=color,
+            alpha=0.5
+        ))
         # Add model ID as text
-        plt.text(x, y, model_id.split('_')[0],
+        plt.text(x, y, model_id,
                  horizontalalignment='center',
                  verticalalignment='center',
                  color='white',
@@ -165,8 +257,8 @@ def visualize_scene(scene, save_path=None):
     plt.grid(True, linestyle='--', alpha=0.7)
 
     # Adjust plot limits to match table
-    plt.xlim(-table_width/2 - 0.1, table_width/2 + 0.1)
-    plt.ylim(-table_depth/2 - 0.1, table_depth/2 + 0.1)
+    # plt.xlim(-table_width/2 - 0.1, table_width/2 + 0.1)
+    # plt.ylim(-table_depth/2 - 0.1, table_depth/2 + 0.1)
 
     # Save or show the plot
     if save_path:
@@ -175,56 +267,74 @@ def visualize_scene(scene, save_path=None):
     else:
         plt.show()
 
-def generate_kitchen_item_scenes(input_file, max_scenes=10, max_items=3):
+def generate_kitchen_item_scenes(max_scenes=10, min_items=15, max_items=18):
     """
     Generate new scenes with kitchen item permutations.
     """
-    # Load original data to get reference items
-    with open(input_file, 'r') as f:
-        original_data = json.load(f)
-
-    # Find kitchen items
-    kitchen_items = [
-        actor['model_id'] for scene in original_data
-        for actor in scene['actors']
-        if is_kitchen_item(actor['model_id'])
-    ]
-
-    # Remove duplicates
-    kitchen_items = list(set(kitchen_items))
+    kitchen_ycb_dirs = {}
+    for model_id in ycb_dataset['model_data']:
+        if is_kitchen_item(model_id):
+            metadata = ycb_dataset['model_data'][model_id]
+            model_scales = metadata.get("scales", [1.0])
+            scale = model_scales[0]
+            aabb = metadata["bbox"]
+            density = metadata.get("density", 1000)
+            physical_material = None
+            model_dir = YCB_ASSETS_DIR / model_id
+            kitchen_ycb_dirs[model_id] = {
+                'aabb': aabb,
+                'scale': scale,
+                'density': density,
+                'physical_material': physical_material,
+                'model_dir': model_dir
+            }
 
     # Generate scenes
     new_scenes = []
 
     # Generate permutations
-    for r in range(1, min(max_items, len(kitchen_items)) + 1):
-        for perm in itertools.permutations(kitchen_items, r):
+    for r in range(min_items, max_items + 1):
+        # get random r items
+        perm = np.random.choice(list(kitchen_ycb_dirs.keys()), r, replace=False)
+        # for perm in itertools.permutations(kitchen_ycb_dirs.keys(), r):
             # Reset item placer for each scene
-            item_placer = ItemPlacer()
+        item_placer = ItemPlacer(kitchen_ycb_dirs)
+        actors = []
+        for item in perm:
+            # Attempt to place item
+            placing = item_placer.place_item(item)
+            if not placing:
+                continue
+            yaw = placing[3]
+            placing = placing[:3]
+            # rotate to table
+            placing = np.array(placing)
+            placing = quat2mat(TABLE_POSE['rotation']) @ placing + np.array(TABLE_POSE['position'])
+            placing = placing.tolist()
+            quat = euler2mat(0, 0, yaw)
+            quat = quat2mat(TABLE_POSE['rotation']) @ quat
+            quat = mat2quat(quat).tolist()
+            placing.extend(quat)
+            actors.append({
+                "model_id": item,
+                "pose": [
+                    *placing,  # x, y, z, w, x, y, z
+                ],
+                "scale": 1.0,  # Default scale
+                "rep_pts": generate_random_rep_points()
+            })
+        scene = {
+            "actors": actors
+        }
+        new_scenes.append(scene)
 
-            # Create a new scene
-            scene = {
-                "actors": [
-                    {
-                        "model_id": item,
-                        "pose": [
-                            *item_placer.place_item(item),  # x, y, z position
-                            0, 0, 0, 1  # zero rotation (x, y, z, w)
-                        ],
-                        "scale": 1.0,  # Default scale
-                        "rep_pts": generate_random_rep_points()
-                    } for item in perm
-                ]
-            }
-            new_scenes.append(scene)
-
-            # Stop if we've reached max scenes
-            if len(new_scenes) >= max_scenes:
-                return new_scenes
+        # Stop if we've reached max scenes
+        if len(new_scenes) >= max_scenes:
+            return new_scenes
 
     return new_scenes
 
-def main(input_file='ycb_train_5k.json', output_file='kitchen_item_permutations.json'):
+def main(output_file='kitchen_item_permutations.json'):
     """
     Main function to generate kitchen item permutation scenes.
     """
@@ -232,8 +342,14 @@ def main(input_file='ycb_train_5k.json', output_file='kitchen_item_permutations.
     random.seed(42)
     np.random.seed(42)
 
+    # Load YCB dataset
+    global ycb_dataset
+    ycb_dataset = {
+        "model_data": load_json(ASSET_DIR / "assets/mani_skill2_ycb/info_raw.json"),
+    }
+
     # Generate scenes
-    kitchen_scenes = generate_kitchen_item_scenes(input_file)
+    kitchen_scenes = generate_kitchen_item_scenes()
 
     # Ensure output directory exists
     os.makedirs(os.path.dirname(output_file) or '.', exist_ok=True)
@@ -243,7 +359,7 @@ def main(input_file='ycb_train_5k.json', output_file='kitchen_item_permutations.
         json.dump(kitchen_scenes, f, indent=2)
 
     # Visualize the first few scenes
-    for i, scene in enumerate(kitchen_scenes[:3]):
+    for i, scene in enumerate(kitchen_scenes):
         visualize_scene(scene, save_path=f'img/scene_{i+1}_placement.png')
 
     print(f"Generated {len(kitchen_scenes)} scenes with kitchen item permutations in {output_file}")

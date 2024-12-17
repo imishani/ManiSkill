@@ -45,4 +45,9 @@ imgui.ini
 .coverage*
 htmlcov/
 
+# Itamar added- ignore all videos etc
 */img
+*.mp4
+*.pt
+
+*.h5

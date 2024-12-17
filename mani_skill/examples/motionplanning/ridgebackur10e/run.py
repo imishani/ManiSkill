@@ -11,19 +11,21 @@ from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.trajectory.merge_trajectory import merge_trajectories
 # from mani_skill.examples.motionplanning.panda.solutions import solvePushCube, solvePickCube, solveStackCube, \
 #     solvePegInsertionSide, solvePlugCharger, solvePullCubeTool, solveLiftPegUpright, solvePullCube
-from mani_skill.examples.motionplanning.ridgebackur10e.solutions import solvePickCubeUr
+from mani_skill.examples.motionplanning.ridgebackur10e.solutions import solvePickYCBUr
 
 
 MP_SOLUTIONS = {
-    "BarWaiter-v1": solvePickCubeUr,
-    "PickCube-v1": solvePickCubeUr,
+    "BarWaiter-v1": solvePickYCBUr,
+    "PickSingleKitchenYCB-v1": solvePickYCBUr,
 }
 
 
 def parse_args(args=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("-e", "--env-id", type=str, default="PickCube-v1",
+    parser.add_argument("-e", "--env-id", type=str, default="PickSingleKitchenYCB-v1",
                         help=f"Environment to run motion planning solver on. Available options are {list(MP_SOLUTIONS.keys())}")
+    parser.add_argument("-r", "--robot-uid", type=str, default="ridgebackur10e",
+                        help="The robot uid to use for the motion planning solution.")
     parser.add_argument("-o", "--obs-mode", type=str, default="none",
                         help="Observation mode to use. Usually this is kept as 'none' as observations are not necesary to be stored, they can be replayed later via the mani_skill.trajectory.replay_trajectory script.")
     parser.add_argument("-n", "--num-traj", type=int, default=10, help="Number of trajectories to generate.")
@@ -58,7 +60,7 @@ def _main(args, proc_id: int = 0, start_seed: int = 0) -> str:
         human_render_camera_configs=dict(shader_pack=args.shader),
         viewer_camera_configs=dict(shader_pack=args.shader),
         sim_backend=args.sim_backend,
-        robot_uids="ridgebackur10e"
+        robot_uids=args.robot_uid,
     )
     if env_id not in MP_SOLUTIONS:
         raise RuntimeError(

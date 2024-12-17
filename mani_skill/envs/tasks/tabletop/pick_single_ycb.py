@@ -5,12 +5,10 @@ import sapien
 import torch
 
 from mani_skill import ASSET_DIR
-from mani_skill.agents.robots.fetch.fetch import Fetch
-from mani_skill.agents.robots.panda.panda import Panda
-from mani_skill.agents.robots.panda.panda_wristcam import PandaWristCam
-from mani_skill.agents.robots.xmate3.xmate3 import Xmate3Robotiq
+from mani_skill.agents.robots import Fetch, Panda, PandaWristCam, RidgebackUR10e, StaticRidgebackUR10e
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.envs.utils.randomization.pose import random_quaternions
+from transforms3d.euler import euler2quat
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import common, sapien_utils
 from mani_skill.utils.building import actors
@@ -20,6 +18,7 @@ from mani_skill.utils.scene_builder.table import TableSceneBuilder
 from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 from mani_skill.utils.structs.types import GPUMemoryConfig, SimConfig
+from mani_skill.utils.building.actors.ycb import get_ycb_builder
 
 WARNED_ONCE = False
 
@@ -43,13 +42,14 @@ class PickSingleYCBEnv(BaseEnv):
     - 3D goal position (also visualized in human renders)
 
     **Additional Notes**
+    **Additional Notes**
     - On GPU simulation, in order to collect data from every possible object in the YCB database we recommend using at least 128 parallel environments or more, otherwise you will need to reconfigure in order to sample new objects.
     """
 
     _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/PickSingleYCB-v1_rt.mp4"
 
-    SUPPORTED_ROBOTS = ["panda", "panda_wristcam", "fetch"]
-    agent: Union[Panda, PandaWristCam, Fetch]
+    SUPPORTED_ROBOTS = ["panda", "panda_wristcam", "fetch", "ridgebackur10e", "static_ridgebackur10e"]
+    agent: Union[Panda, PandaWristCam, Fetch, RidgebackUR10e, StaticRidgebackUR10e]
     goal_thresh = 0.025
 
     def __init__(
@@ -92,7 +92,8 @@ class PickSingleYCBEnv(BaseEnv):
         return CameraConfig("render_camera", pose, 512, 512, 1, 0.01, 100)
 
     def _load_agent(self, options: dict):
-        super()._load_agent(options, sapien.Pose(p=[-0.615, 0, 0]))
+        # super()._load_agent(options, sapien.Pose(p=[-0.615, 0, 0]))
+        super()._load_agent(options, sapien.Pose(p=[0., 0, 0]))
 
     def _load_scene(self, options: dict):
         global WARNED_ONCE
@@ -247,3 +248,207 @@ class PickSingleYCBEnv(BaseEnv):
         self, obs: Any, action: torch.Tensor, info: Dict
     ):
         return self.compute_dense_reward(obs=obs, action=action, info=info) / 6
+
+
+@register_env("PickSingleKitchenYCB-v1", max_episode_steps=50, asset_download_ids=["ycb"])
+class PickSingleKitchenYCBEnv(PickSingleYCBEnv):
+    """
+    **Task Description:**
+    Pick up a random object sampled from the [YCB dataset](https://www.ycbbenchmarks.com/) and move it to a random goal position
+
+    **Randomizations:**
+    - the object's xy position is randomized on top of a table in the region [0.1, 0.1] x [-0.1, -0.1]. It is placed flat on the table
+    - the object's z-axis rotation is randomized
+    - the object geometry is randomized by randomly sampling kitchen YCB object. (during reconfiguration)
+
+    **Success Conditions:**
+    - the object position is within goal_thresh (default 0.025) euclidean distance of the goal position
+    - the robot is static (q velocity < 0.2)
+
+    **Goal Specification:**
+    - 3D goal position (also visualized in human renders)
+
+    **Additional Notes**
+    - On GPU simulation, in order to collect data from every possible object in the YCB database we recommend using at least 128 parallel environments or more, otherwise you will need to reconfigure in order to sample new objects.
+    """
+
+    kitchen_keywords = [
+        'pitcher',
+        'mug',
+        'cup',
+        'plate',
+        'bowl',
+        'spatula',
+        'knife',
+        'fork',
+        'spoon',
+    ]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @property
+    def _default_sensor_configs(self):
+        pose = sapien_utils.look_at(eye=[1.3, 0, 1.6], target=[-0.1, 0, 0.1])
+        return [CameraConfig("base_camera", pose, 128, 128, np.pi / 2, 0.01, 100)]
+
+    @property
+    def _default_human_render_camera_configs(self):
+        pose = sapien_utils.look_at([1.0, 2.0, 2.0], [-0.12, 0.0, 0.35])
+        return CameraConfig("render_camera", pose, 512, 512, 1, 0.01, 100)
+
+    def _load_scene(self, options: dict):
+        global WARNED_ONCE
+        self.table_scene = TableSceneBuilder(
+            env=self, robot_init_qpos_noise=self.robot_init_qpos_noise
+        )
+        self.table_scene.build(scale=1.0)
+
+        self.kitchen_model_ids = [
+            model_id for model_id in self.all_model_ids if any(keyword in model_id for keyword in self.kitchen_keywords)
+        ]
+
+        # randomize the list of all possible models in the YCB dataset
+        # then sub-scene i will load model model_ids[i % number_of_ycb_objects]
+        model_ids = self._batched_episode_rng.choice(self.kitchen_model_ids, replace=True)
+        if (
+            self.num_envs > 1
+            and self.num_envs < len(self.kitchen_model_ids)
+            and self.reconfiguration_freq <= 0
+            and not WARNED_ONCE
+        ):
+            WARNED_ONCE = True
+            print(
+                """There are less parallel environments than total available models to sample.
+                Not all models will be used during interaction even after resets unless you call env.reset(options=dict(reconfigure=True))
+                or set reconfiguration_freq to be >= 1."""
+            )
+
+        self._objs: List[Actor] = []
+        self.obj_heights = []
+        for i, model_id in enumerate(model_ids):
+            # TODO: before official release we will finalize a metadata dataclass that these build functions should return.
+            builder = get_ycb_builder(self.scene,
+                                      id=model_id,
+                                      add_collision=True,
+                                      add_visual=True)
+
+            builder.initial_pose = sapien.Pose(p=[0, 0, 0])
+            builder.set_scene_idxs([i])
+            self._objs.append(builder.build(name=f"{model_id}-{i}"))
+            self.remove_from_state_dict_registry(self._objs[-1])
+        self.obj = Actor.merge(self._objs, name="ycb_object")
+        self.add_to_state_dict_registry(self.obj)
+
+        self.goal_site = actors.build_sphere(
+            self.scene,
+            radius=self.goal_thresh,
+            color=[0, 1, 0, 1],
+            name="goal_site",
+            body_type="kinematic",
+            add_collision=False,
+            initial_pose=sapien.Pose(),
+        )
+        self._hidden_objects.append(self.goal_site)
+
+    def _after_reconfigure(self, options: dict):
+        self.object_zs = []
+        self.object_meshes = []
+        for obj in self._objs:
+            collision_mesh = obj.get_first_collision_mesh()
+            # this value is used to set object pose so the bottom is at z=0
+            self.object_zs.append(-collision_mesh.bounding_box.bounds[0, 2])
+            self.object_meshes.append(collision_mesh)
+        self.object_zs = common.to_tensor(self.object_zs, device=self.device)
+
+    def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
+        with (torch.device(self.device)):
+            b = len(env_idx)
+            self.table_scene.initialize(env_idx)
+            xyz = torch.zeros((b, 3))
+            xyz[:, :2] = torch.rand((b, 2)) * torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) + self.table_scene.table.pose.p[:, :2] - torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) / 2
+            xyz[:, 2] = self.object_zs[env_idx]
+            qs = random_quaternions(b, lock_x=True, lock_y=True)
+            self.obj.set_pose(Pose.create_from_pq(p=xyz, q=qs))
+
+            goal_xyz = torch.zeros((b, 3))
+            goal_xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.3
+            goal_xyz[:, 2] = torch.rand((b)) * 0.3 + xyz[:, 2]
+            self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
+
+            # Initialize robot arm to a higher position above the table than the default typically used for other table top tasks
+            if self.robot_uids == "panda" or self.robot_uids == "panda_wristcam":
+                # fmt: off
+                qpos = np.array(
+                    [0.0, 0, 0, -np.pi * 2 / 3, 0, np.pi * 2 / 3, np.pi / 4, 0.04, 0.04]
+                )
+                # fmt: on
+                qpos[:-2] += self._episode_rng.normal(
+                    0, self.robot_init_qpos_noise, len(qpos) - 2
+                )
+                self.agent.reset(qpos)
+                self.agent.robot.set_root_pose(sapien.Pose([-0.615, 0, 0]))
+            elif self.robot_uids == "xmate3_robotiq":
+                qpos = np.array([0, 0.6, 0, 1.3, 0, 1.3, -1.57, 0, 0])
+                qpos[:-2] += self._episode_rng.normal(
+                    0, self.robot_init_qpos_noise, len(qpos) - 2
+                )
+                self.agent.reset(qpos)
+                self.agent.robot.set_root_pose(sapien.Pose([-0.562, 0, 0]))
+            elif self.robot_uids == "ridgebackur10e":
+                qpos = np.array(
+                    [0., 0, 0,
+                     0., -1.0472, -2., 0., 1.5708, 0.,
+                     0., 0.,
+                     0, 0, 0, 0  # Passive joints for the gripper
+                    ]
+                )
+                # self.agent.reset(qpos)
+                # randomize the initial base pose of the robot, around the center of the table
+                radius = np.sqrt(self.table_scene.table_length ** 2 + self.table_scene.table_width ** 2) / 2
+                angle = self._episode_rng.uniform(0, 2 * np.pi)
+                x_pos = self.table_scene.table.pose.p[0][0] + radius * np.cos(angle)
+                y_pos = self.table_scene.table.pose.p[0][1] + radius * np.sin(angle)
+                # look at the center of the table
+                theta = np.arctan2(
+                    self.table_scene.table.pose.p[0][1] - y_pos,
+                    self.table_scene.table.pose.p[0][0] - x_pos
+                )
+                qpos[0] = x_pos
+                qpos[1] = y_pos
+                qpos[2] = theta
+
+                self.agent.reset(qpos)
+
+                # self.agent.robot.set_root_pose(sapien.Pose([x_pos, y_pos, -self.table_scene.table_height],
+                #                                            euler2quat(0, 0, theta)))
+            elif self.robot_uids == "static_ridgebackur10e":
+                qpos = np.array(
+                    [0., -1.0472, -2., 0., 1.5708, 0.,
+                     0., 0.,
+                     0, 0, 0, 0  # Passive joints for the gripper
+                    ]
+                )
+
+                # # randomize the initial base pose of the robot, around the center of the table
+                # radius = np.sqrt(self.table_scene.table_length ** 2 + self.table_scene.table_width ** 2) / 2
+                # angle = self._episode_rng.uniform(0, 2 * np.pi)
+                # x_pos = self.table_scene.table.pose.p[0][0] + radius * np.cos(angle)
+                # y_pos = self.table_scene.table.pose.p[0][1] + radius * np.sin(angle)
+                # # look at the center of the table
+                # theta = np.arctan2(
+                #     self.table_scene.table.pose.p[0][1] - y_pos,
+                #     self.table_scene.table.pose.p[0][0] - x_pos
+                # )
+                # qpos[0] = x_pos
+                # qpos[1] = y_pos
+                # qpos[2] = theta
+
+                self.agent.reset(qpos)
+                # self.agent.robot.set_root_pose(sapien.Pose([x_pos, y_pos, -self.table_scene.table_height],
+                #                                            euler2quat(0, 0, theta)))
+            else:
+                raise NotImplementedError(self.robot_uids)
+
+    def get_object(self):
+        return self.obj
