@@ -3,6 +3,7 @@ from typing import List
 import mplib
 import numpy as np
 import sapien
+import transforms3d
 import trimesh
 from mplib.sapien_utils import SapienPlanningWorld, SapienPlanner
 from sympy import euler
@@ -93,6 +94,7 @@ class RidgebackUR10ePlanningSolver:
             joint_acc_limits=np.ones(dof) * self.joint_acc_limits,
             use_convex=False,
         )
+
         # planning_world = SapienPlanningWorld(
         #     self.base_env.scene.sub_scenes[0],
         #     [self.robot._objs[0]]
@@ -129,8 +131,59 @@ class RidgebackUR10ePlanningSolver:
                 self.base_env.render_human()
         return obs, reward, terminated, truncated, info
 
+
+    def get_eef_z(self):
+        """Helper function for constraint"""
+        ee_idx = self.planner.link_name_2_idx[self.planner.move_group]
+        ee_pose = self.planner.robot.get_pinocchio_model().get_link_pose(ee_idx)
+        mat = transforms3d.quaternions.quat2mat(ee_pose.q)
+        return mat[:, 2]
+
+    def make_f(self):
+        """
+        Create a constraint function that takes in a qpos and outputs a scalar.
+        A valid constraint function should evaluates to 0 when the constraint
+        is satisfied.
+
+        See [ompl constrained planning](https://ompl.kavrakilab.org/constrainedPlanning.html)
+        for more details.
+        """
+
+        def f(x, out):
+            self.planner.robot.set_qpos(x)
+            diff = self.get_eef_z().dot(np.array([0, 0, 1])) - 0.966
+            out[0] = (
+                0 if diff < 0 else diff
+            )  # maintain 15 degrees w.r.t. z axis
+
+        # constraint function ankor end
+        return f
+
+    def make_j(self):
+        """
+        Create the jacobian of the constraint function w.r.t. qpos.
+        This is needed because the planner uses the jacobian to project a random sample
+        to the constraint manifold.
+        """
+
+        # constraint jacobian ankor
+        def j(x, out):
+            full_qpos = self.planner.pad_move_group_qpos(x)
+            jac = self.planner.robot.get_pinocchio_model().compute_single_link_jacobian(
+                full_qpos, len(self.planner.move_group_joint_indices) - 1
+            )
+            rot_jac = jac[3:, self.planner.move_group_joint_indices]
+            for i in range(len(self.planner.move_group_joint_indices)):
+                out[i] = np.cross(rot_jac[:, i], self.get_eef_z()).dot(
+                    np.array([0, 0, 1])
+                )
+
+        # constraint jacobian ankor end
+        return j
+
     def move_to_pose_with_RRTConnect(
-        self, pose: sapien.Pose, dry_run: bool = False, refine_steps: int = 0
+        self, pose: sapien.Pose, dry_run: bool = False, refine_steps: int = 0,
+            constrain=False
     ):
         pose = to_sapien_pose(pose)
         if self.grasp_pose_visual is not None:
@@ -144,12 +197,17 @@ class RidgebackUR10ePlanningSolver:
         #     wrt_world=True,
         # )
         mplib_pose = mplib.pymp.Pose(p=pose.p, q=pose.q)
+
         result = self.planner.plan_pose(
             mplib_pose,
             self.robot.get_qpos().cpu().numpy()[0],
             time_step=self.base_env.control_timestep,
             # use_point_cloud=self.use_point_cloud,
             wrt_world=True,
+            constraint_function=self.make_f() if constrain else None,
+            constraint_jacobian=self.make_j() if constrain else None,
+            constraint_tolerance=0.05 if constrain else 0.001,
+            planning_time=5 if constrain else 1,
         )
         if result["status"] != "Success":
             print(result["status"])
@@ -159,6 +217,7 @@ class RidgebackUR10ePlanningSolver:
         if dry_run:
             return result
         return self.follow_path(result, refine_steps=refine_steps)
+
 
     def move_to_qpose_withRRTConnect(self,
                                      qpose: List[np.ndarray],
@@ -197,7 +256,7 @@ class RidgebackUR10ePlanningSolver:
             result = self.planner.plan_screw(
                 mplib_pose,
                 self.robot.get_qpos().cpu().numpy()[0],
-                time_step=self.base_env.control_timestep,
+                time_step=self.base_env.control_timestep/2,
                 # use_point_cloud=self.use_point_cloud,
             )
             if result["status"] != "Success":
