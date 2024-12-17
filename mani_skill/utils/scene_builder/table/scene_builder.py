@@ -31,7 +31,7 @@ class TableSceneBuilder(SceneBuilder):
         # )
         builder.add_box_collision(
             pose=sapien.Pose(p=[0, 0, (0.9196429 * self.scale / 1.75) / 2]),
-            half_size=(2.418 / 2, 1.209 / 2, (0.9196429 * self.scale / 1.75) / 2),
+            half_size=((2.418 * self.scale / 1.75) / 2, (1.209 * self.scale / 1.75) / 2, (0.9196429 * self.scale / 1.75) / 2),
         )
         builder.add_visual_from_file(
             filename=table_model_file, scale=[self.scale] * 3, pose=table_pose
@@ -94,6 +94,8 @@ class TableSceneBuilder(SceneBuilder):
             qpos[:, -2:] = 0.04
             self.env.agent.reset(qpos)
             self.env.agent.robot.set_pose(sapien.Pose([-0.615, 0, 0]))
+
+
         elif self.env.robot_uids == "panda_wristcam":
             # fmt: off
             qpos = np.array(
@@ -173,7 +175,19 @@ class TableSceneBuilder(SceneBuilder):
                  ]
             )
             self.env.agent.reset(qpos)
-            self.env.agent.robot.set_pose(sapien.Pose([-1.05, 0, -self.table_height]))
+            self.env.agent.robot.set_pose(sapien.Pose([0., 0, -self.table_height]))
+            self.ground.set_collision_group_bit(
+                group=2, bit_idx=RIDGEBACK_WHEELS_COLLISION_BIT, bit=1
+            )
+        elif self.env.robot_uids == "static_ridgebackur10e":
+            qpos = np.array(
+                [0., -1.0472, -2., 0., 1.5708, 0.,
+                 0., 0.,
+                 0, 0, 0, 0  # Passive joints for the gripper
+                 ]
+            )
+            self.env.agent.reset(qpos)
+            self.env.agent.robot.set_pose(sapien.Pose([-1., 0, -self.table_height]))
             self.ground.set_collision_group_bit(
                 group=2, bit_idx=RIDGEBACK_WHEELS_COLLISION_BIT, bit=1
             )

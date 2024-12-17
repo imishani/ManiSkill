@@ -1,1 +1,1 @@
-from .pick_cube import solve as solvePickCubeUr
+from .pick_ycb import solve as solvePickYCBUr

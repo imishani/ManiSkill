@@ -10,6 +10,7 @@ from mani_skill.agents.base_agent import BaseAgent, Keyframe
 from mani_skill.agents.controllers import *
 from mani_skill.agents.registration import register_agent
 from mani_skill.utils import common, sapien_utils
+from mani_skill.utils.structs import Link
 from mani_skill.utils.structs.actor import Actor
 
 
@@ -232,6 +233,9 @@ class Panda(BaseAgent):
         self.tcp = sapien_utils.get_obj_by_name(
             self.robot.get_links(), self.ee_link_name
         )
+
+        self.base_link: Link = self.robot.get_links()[0]
+        self.base_link.set_collision_group_bit(group=2, bit_idx=31, bit=1)
 
     def is_grasping(self, object: Actor, min_force=0.5, max_angle=85):
         """Check if the robot is grasping an object

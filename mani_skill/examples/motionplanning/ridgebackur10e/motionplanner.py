@@ -1,15 +1,22 @@
+from typing import List
+
 import mplib
 import numpy as np
 import sapien
 import trimesh
+from mplib.sapien_utils import SapienPlanningWorld, SapienPlanner
+from sympy import euler
 
 from mani_skill.agents.base_agent import BaseAgent
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.envs.scene import ManiSkillScene
 from mani_skill.utils.structs.pose import to_sapien_pose
 import sapien.physx as physx
+from mani_skill.utils.geometry.trimesh_utils import get_component_mesh
 
-from transforms3d import quaternions
+from transforms3d import quaternions, euler
+
+import open3d as o3d
 
 
 OPEN = 0
@@ -21,6 +28,7 @@ class RidgebackUR10ePlanningSolver:
         env: BaseEnv,
         debug: bool = False,
         vis: bool = True,
+        base_pose: sapien.Pose = None,  # TODO mplib doesn't support robot base being anywhere but 0
         visualize_target_grasp_pose: bool = True,
         print_env_info: bool = True,
         joint_vel_limits=0.9,
@@ -32,6 +40,11 @@ class RidgebackUR10ePlanningSolver:
         self.robot = self.env_agent.robot
         self.joint_vel_limits = joint_vel_limits
         self.joint_acc_limits = joint_acc_limits
+
+        self.base_pose = to_sapien_pose(base_pose)
+
+        self.planner = self.setup_planner()
+
         self.control_mode = self.base_env.control_mode
 
         self.debug = debug
@@ -54,8 +67,7 @@ class RidgebackUR10ePlanningSolver:
         self.collision_pts_changed = False
         self.all_collision_pts = None
 
-        self.planner = None
-        # self.planner = self.setup_planner()
+        # self.planner = None
 
     def render_wait(self):
         if not self.vis or not self.debug:
@@ -70,17 +82,30 @@ class RidgebackUR10ePlanningSolver:
     def setup_planner(self):
         link_names = [link.get_name() for link in self.robot.get_links()]
         joint_names = [joint.get_name() for joint in self.robot.get_active_joints()]
-        joint_names = joint_names[:9]
+        dof = 9 if self.robot.name == "ridgebackur10e" else 6 if self.robot.name == "static_ridgebackur10e" else 7
         planner = mplib.Planner(
             urdf=self.env_agent.urdf_path,
             srdf=self.env_agent.urdf_path.replace(".urdf", ".srdf"),
             user_link_names=link_names,
             user_joint_names=joint_names,
             move_group="ur_arm_TCP",
-            joint_vel_limits=np.ones(9) * self.joint_vel_limits,
-            joint_acc_limits=np.ones(9) * self.joint_acc_limits,
+            joint_vel_limits=np.ones(dof) * self.joint_vel_limits,
+            joint_acc_limits=np.ones(dof) * self.joint_acc_limits,
             use_convex=False,
         )
+        # planning_world = SapienPlanningWorld(
+        #     self.base_env.scene.sub_scenes[0],
+        #     [self.robot._objs[0]]
+        # )
+        # planner = SapienPlanner(planning_world,
+        #                         "scene-0-ridgebackur10e_ur_arm_TCP",
+        #                         joint_vel_limits=np.ones(9) * self.joint_vel_limits,
+        #                         joint_acc_limits=np.ones(9) * self.joint_acc_limits)
+
+        pose = mplib.pymp.Pose(p=self.base_pose.p, q=self.base_pose.q)
+        print(f"Setting base pose {pose}")
+        planner.set_base_pose(pose)
+        # planner.update_from_simulation()
         return planner
 
     def follow_path(self, result, refine_steps: int = 0):
@@ -92,6 +117,8 @@ class RidgebackUR10ePlanningSolver:
                 action = np.hstack([qpos, qvel, self.gripper_state])
             else:
                 action = np.hstack([qpos, self.gripper_state])
+            # delta_base = action[:3] - self.robot.get_qpos()[0, :3].cpu().numpy()
+            # action[:3] = delta_base
             obs, reward, terminated, truncated, info = self.env.step(action)
             self.elapsed_steps += 1
             if self.print_env_info:
@@ -126,9 +153,27 @@ class RidgebackUR10ePlanningSolver:
         )
         if result["status"] != "Success":
             print(result["status"])
-            self.render_wait()
+            # self.render_wait()
             return -1
-        self.render_wait()
+        # self.render_wait()
+        if dry_run:
+            return result
+        return self.follow_path(result, refine_steps=refine_steps)
+
+    def move_to_qpose_withRRTConnect(self,
+                                     qpose: List[np.ndarray],
+                                     dry_run: bool = False,
+                                     refine_steps: int = 0):
+        result = self.planner.plan_qpos(
+            qpose,
+            self.robot.get_qpos().cpu().numpy()[0],
+            time_step=self.base_env.control_timestep,
+        )
+        if result["status"] != "Success":
+            print(result["status"])
+            # self.render_wait()
+            return -1
+        # self.render_wait()
         if dry_run:
             return result
         return self.follow_path(result, refine_steps=refine_steps)
@@ -141,27 +186,176 @@ class RidgebackUR10ePlanningSolver:
         if self.grasp_pose_visual is not None:
             self.grasp_pose_visual.set_pose(pose)
         pose = sapien.Pose(p=pose.p , q=pose.q)
+        mplib_pose = mplib.pymp.Pose(p=pose.p, q=pose.q)
         result = self.planner.plan_screw(
-            np.concatenate([pose.p, pose.q]),
+            mplib_pose,
             self.robot.get_qpos().cpu().numpy()[0],
             time_step=self.base_env.control_timestep,
-            use_point_cloud=self.use_point_cloud,
+            # use_point_cloud=self.use_point_cloud,
         )
         if result["status"] != "Success":
             result = self.planner.plan_screw(
-                np.concatenate([pose.p, pose.q]),
+                mplib_pose,
                 self.robot.get_qpos().cpu().numpy()[0],
                 time_step=self.base_env.control_timestep,
-                use_point_cloud=self.use_point_cloud,
+                # use_point_cloud=self.use_point_cloud,
             )
             if result["status"] != "Success":
                 print(result["status"])
-                self.render_wait()
+                # self.render_wait()
                 return -1
-        self.render_wait()
+        # self.render_wait()
         if dry_run:
             return result
         return self.follow_path(result, refine_steps=refine_steps)
+
+    def get_pc_from_env(self,
+                        obj,
+                        plot=False):
+        # check if the object is a mesh or a box or a sphere
+        if obj.px_body_type == "static":
+            print("Object is not a kinematic or dynamic object")
+            raise ValueError("Object is not a kinematic object or has no collision shapes")
+        mesh: trimesh.Trimesh or None = get_component_mesh(
+            obj._objs[0].find_component_by_type(physx.PhysxRigidDynamicComponent),
+            to_world_frame=True
+        )
+
+        assert mesh is not None, "can not get actor mesh for {}".format(obj)
+
+        mesh_o3d = o3d.geometry.TriangleMesh()
+        mesh_o3d.vertices = o3d.utility.Vector3dVector(mesh.vertices)
+        mesh_o3d.triangles = o3d.utility.Vector3iVector(mesh.faces)
+        # pose = obj._objs[0].get_pose()
+        # # transform the mesh
+        # transform_mat = np.eye(4)
+        # transform_mat[:3, :3] = quaternions.quat2mat(pose.q)
+        # transform_mat[:3, 3] = pose.p
+        # mesh_o3d.transform(transform_mat)
+
+        aabb_o3d = mesh_o3d.get_axis_aligned_bounding_box()
+        aabb = np.array([[aabb_o3d.min_bound[0], aabb_o3d.min_bound[1], aabb_o3d.min_bound[2]],
+                         [aabb_o3d.max_bound[0], aabb_o3d.max_bound[1], aabb_o3d.max_bound[2]]])
+        pcd = mesh_o3d.sample_points_uniformly(number_of_points=5000)
+        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
+        pcd.orient_normals_consistent_tangent_plane(k=100)
+        if plot:
+            o3d.visualization.draw_geometries([pcd, aabb_o3d],
+                                              point_show_normal=True,  # Show the normals as small lines
+                                              width=800,
+                                              height=600,
+                                              mesh_show_back_face=True)
+        points = np.asarray(pcd.points)
+        normals = np.asarray(pcd.normals)
+        return points, normals, aabb
+
+
+    def sample_grasp_ee_poses(self,
+                              aabb,
+                              pc,
+                              n_samples: int,
+                              ik_solver,
+                              collision_checker,
+                              **kwargs):
+        ee_samples = []
+        obj_min, obj_max = aabb[0, :], aabb[1, :]
+        for _ in range(n_samples):
+            ee_position = np.random.uniform(obj_min, obj_max, size=3)
+            # sample a point from the point cloud
+            # ee_position = pc[np.random.choice(pc.shape[0])]
+            ee_orientation = np.random.uniform(-np.pi, np.pi, size=3)
+            ee_orientation[:2] *= 0.1
+
+            ee_pose = sapien.Pose(p=ee_position, q=euler.euler2quat(*ee_orientation))
+            # # transform with respect to the base
+            base_pose = self.robot.get_pose()
+            base_pose = sapien.Pose(p=base_pose.p.squeeze().cpu().numpy(),
+                                    q=base_pose.q.squeeze().cpu().numpy())
+            ee_pose = base_pose.inv() * ee_pose
+            mplib_ee_pose = mplib.pymp.Pose(p=ee_pose.p,
+                                            q=ee_pose.q)
+
+            # check if q_init is in kwargs
+            if "q_init" not in kwargs:
+                kwargs["start_qpos"] = self.robot.get_qpos().cpu().numpy()[0]
+            current_qpos = np.clip(
+                kwargs["start_qpos"],
+                self.planner.joint_limits[:, 0],
+                self.planner.joint_limits[:, 1]
+            )
+            current_qpos = self.planner.pad_move_group_qpos(current_qpos)
+            kwargs["start_qpos"] = current_qpos
+            kwargs["return_closest"] = True
+            # kwargs["verbose"] = True
+            ik_succ, ik_solution = ik_solver(mplib_ee_pose, **kwargs)
+            if ik_succ == "Success": # and not collision_checker(ik_solution): alreasy checks for collisions!
+                ee_samples.append((ee_pose, ik_solution))
+        assert len(ee_samples) > 0, "\033[91mNo valid grasp poses found\033[0m"
+        print(f"Found {len(ee_samples)} valid grasp poses")
+        return ee_samples
+
+
+    def get_antipodal_score(self,
+                            robot_joint_angles: np.ndarray,
+                            pc,
+                            normals):
+        self.planner.pinocchio_model.compute_forward_kinematics(robot_joint_angles)
+        tcp_pose = self.planner.pinocchio_model.get_link_pose(self.planner.link_name_2_idx[self.planner.move_group])
+        tcp_pose = sapien.Pose(tcp_pose.get_p(), tcp_pose.get_q())
+        # transform back to world frame
+        base_pose = self.robot.get_pose()
+        base_pose = sapien.Pose(p=base_pose.p.squeeze().cpu().numpy(),
+                                q=base_pose.q.squeeze().cpu().numpy())
+        tcp_pose = base_pose * tcp_pose
+
+        tcp_position = tcp_pose.get_p()
+        tcp_orientation = tcp_pose.get_q()
+        score = 0
+
+        gripper_line_vector = np.array([0.0, 0.2, 0.0])
+        tcp_ori_mat = quaternions.quat2mat(tcp_orientation)
+        gripper_line_vector = tcp_ori_mat @ gripper_line_vector #+ tcp_position
+        gripper_line_vector /= np.linalg.norm(gripper_line_vector)
+        box = o3d.geometry.OrientedBoundingBox(tcp_position,
+                                               tcp_ori_mat,
+                                               np.array([0.05, 0.4, 0.05]))
+        pc = o3d.utility.Vector3dVector(pc)
+        indices = box.get_point_indices_within_bounding_box(pc)
+        if type(normals) == np.ndarray:
+            normals = [x for x in normals]
+        elif type(normals) == list:
+            normals = normals
+        else:
+            raise ValueError(f"Invalid type {type(normals)}")
+        normals_in_grasp = np.array([normals[i] for i in indices])
+        if len(normals_in_grasp) > 0:
+            score = np.mean(np.abs(np.dot(normals_in_grasp, gripper_line_vector)))
+        return score
+
+
+
+    def find_best_grasp(self,
+                        obj,
+                        n_samples: int = 50
+                        ):
+
+        pc, normals, aabb = self.get_pc_from_env(obj)
+        poses_conf = self.sample_grasp_ee_poses(aabb,
+                                                pc,
+                                                n_samples,
+                                                self.planner.IK,
+                                                self.planner.check_for_collision)
+        best_score = 0
+        best_grasp = None
+        for p in poses_conf:
+            score = self.get_antipodal_score(p[-1], pc, normals)
+            if score > best_score:
+                best_score = score
+                best_grasp = p
+        base_pose = self.robot.get_pose()
+        base_pose = sapien.Pose(p=base_pose.p.squeeze().cpu().numpy(),
+                                q=base_pose.q.squeeze().cpu().numpy())
+        return base_pose * best_grasp[0], best_grasp[1]
 
     def open_gripper(self):
         self.gripper_state = OPEN
@@ -201,7 +395,7 @@ class RidgebackUR10ePlanningSolver:
                 )
             if self.vis:
                 self.base_env.render_human()
-        self.render_wait()
+        # self.render_wait()
         return obs, reward, terminated, truncated, info
 
     def add_box_collision(self, extents: np.ndarray, pose: sapien.Pose):
@@ -242,12 +436,12 @@ def build_panda_gripper_grasp_pose_visual(scene: ManiSkillScene):
     )
 
     builder.add_box_visual(
-        pose=sapien.Pose(p=[0, 0, -0.08]),
+        pose=sapien.Pose(p=[0, 0, 0.08]),
         half_size=[grasp_pose_visual_width, grasp_pose_visual_width, 0.02],
         material=sapien.render.RenderMaterial(base_color=[0, 1, 0, 0.7]),
     )
     builder.add_box_visual(
-        pose=sapien.Pose(p=[0, 0, -0.05]),
+        pose=sapien.Pose(p=[0, 0, 0.05]),
         half_size=[grasp_pose_visual_width, grasp_width, grasp_pose_visual_width],
         material=sapien.render.RenderMaterial(base_color=[0, 1, 0, 0.7]),
     )
@@ -256,7 +450,7 @@ def build_panda_gripper_grasp_pose_visual(scene: ManiSkillScene):
             p=[
                 0.03 - grasp_pose_visual_width * 3,
                 grasp_width + grasp_pose_visual_width,
-                0.03 - 0.05,
+                0.05 - 0.03,
             ],
             q=quaternions.axangle2quat(np.array([0, 1, 0]), theta=np.pi / 2),
         ),
@@ -268,7 +462,7 @@ def build_panda_gripper_grasp_pose_visual(scene: ManiSkillScene):
             p=[
                 0.03 - grasp_pose_visual_width * 3,
                 -grasp_width - grasp_pose_visual_width,
-                0.03 - 0.05,
+                0.05 - 0.03,
             ],
             q=quaternions.axangle2quat(np.array([0, 1, 0]), theta=np.pi / 2),
         ),

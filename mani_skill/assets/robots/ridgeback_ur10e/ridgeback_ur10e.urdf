@@ -225,11 +225,13 @@
     <child link="base_link_1"/>
     <axis xyz="0 1 0"/>
   </joint>
-  <joint name="theta" type="continuous">
-    <limit effort="10000" velocity="1.5708"/>
+  <joint name="theta" type="revolute"> <!--continuous-->
+    <!-- <limit effort="10000" velocity="1.5708"/> -->
     <parent link="base_link_1"/>
     <child link="chassis_link"/>
     <axis xyz="0 0 1"/>
+    <axis xyz="0 0 1"/>
+    <limit effort="330.0" lower="-6.283185307179586" upper="6.283185307179586" velocity="2.0943951023931953"/>
   </joint>
   <link name="chassis_link">
     <visual>

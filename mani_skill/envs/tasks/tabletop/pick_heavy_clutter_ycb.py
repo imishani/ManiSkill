@@ -193,7 +193,8 @@ class PickHeavyClutterEnv(BaseEnv):
     max_episode_steps=100,
 )
 class PickHeavyClutterYCBEnv(PickHeavyClutterEnv):
-    DEFAULT_EPISODE_JSON = f"{ASSET_DIR}/tasks/pick_clutter/ycb_train_5k.json.gz"
+    # DEFAULT_EPISODE_JSON = f"{ASSET_DIR}/tasks/pick_clutter/ycb_train_5k.json.gz"
+    DEFAULT_EPISODE_JSON = f"/home/itamar/work/code/ManiSkill/tests/kitchen_item_permutations.json"
     # _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/PickClutterYCB-v1_rt.mp4"
 
     def _load_model(self, model_id):
