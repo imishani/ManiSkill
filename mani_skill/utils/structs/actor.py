@@ -275,10 +275,16 @@ class Actor(PhysxRigidDynamicComponentStruct[sapien.Entity]):
             for comp in actor.components:
                 if isinstance(comp, physx.PhysxRigidBaseComponent):
                     actor_meshes.append(merge_meshes(get_component_meshes(comp)))
+                    if actor_meshes[-1] is None:
+                        actor_meshes.pop()
             mesh = merge_meshes(actor_meshes)
             meshes.append(mesh)
+            if meshes[-1] is None:
+                meshes.pop()
             if first_only:
                 break
+        if len(meshes) == 0:
+            return []
         if to_world_frame:
             mat = self.pose
             for i, mesh in enumerate(meshes):

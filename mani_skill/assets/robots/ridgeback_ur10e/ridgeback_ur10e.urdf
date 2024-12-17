@@ -231,7 +231,8 @@
     <child link="chassis_link"/>
     <axis xyz="0 0 1"/>
     <axis xyz="0 0 1"/>
-    <limit effort="330.0" lower="-6.283185307179586" upper="6.283185307179586" velocity="2.0943951023931953"/>
+<!--    <limit effort="330.0" lower="-6.283185307179586" upper="6.283185307179586" velocity="2.0943951023931953"/>-->
+    <limit effort="330.0" lower="-1.585" upper="3.5" velocity="2.0943951023931953"/>
   </joint>
   <link name="chassis_link">
     <visual>

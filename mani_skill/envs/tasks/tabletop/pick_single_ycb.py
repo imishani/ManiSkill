@@ -130,7 +130,7 @@ class PickSingleYCBEnv(BaseEnv):
             builder.set_scene_idxs([i])
             self._objs.append(builder.build(name=f"{model_id}-{i}"))
             self.remove_from_state_dict_registry(self._objs[-1])
-        self.obj = Actor.merge(self._objs, name="ycb_object")
+        self.obj = Actor.merge(self._objs, name="ycb_objects")
         self.add_to_state_dict_registry(self.obj)
 
         self.goal_site = actors.build_sphere(
@@ -296,7 +296,7 @@ class PickSingleKitchenYCBEnv(PickSingleYCBEnv):
     @property
     def _default_human_render_camera_configs(self):
         pose = sapien_utils.look_at([1.0, 2.0, 2.0], [-0.12, 0.0, 0.35])
-        return CameraConfig("render_camera", pose, 512, 512, 1, 0.01, 100)
+        return CameraConfig("render_camera", pose, 2560, 2560, 1, 0.01, 100)
 
     def _load_scene(self, options: dict):
         global WARNED_ONCE
@@ -324,7 +324,7 @@ class PickSingleKitchenYCBEnv(PickSingleYCBEnv):
                 Not all models will be used during interaction even after resets unless you call env.reset(options=dict(reconfigure=True))
                 or set reconfiguration_freq to be >= 1."""
             )
-
+        self.model_id = model_ids[0]
         self._objs: List[Actor] = []
         self.obj_heights = []
         for i, model_id in enumerate(model_ids):
@@ -338,7 +338,7 @@ class PickSingleKitchenYCBEnv(PickSingleYCBEnv):
             builder.set_scene_idxs([i])
             self._objs.append(builder.build(name=f"{model_id}-{i}"))
             self.remove_from_state_dict_registry(self._objs[-1])
-        self.obj = Actor.merge(self._objs, name="ycb_object")
+        self.obj = Actor.merge(self._objs, name="ycb_objects")
         self.add_to_state_dict_registry(self.obj)
 
         self.goal_site = actors.build_sphere(
@@ -398,26 +398,26 @@ class PickSingleKitchenYCBEnv(PickSingleYCBEnv):
                 self.agent.robot.set_root_pose(sapien.Pose([-0.562, 0, 0]))
             elif self.robot_uids == "ridgebackur10e":
                 qpos = np.array(
-                    [0., 0, 0,
+                    [-1., 0, 0,
                      0., -1.0472, -2., 0., 1.5708, 0.,
                      0., 0.,
                      0, 0, 0, 0  # Passive joints for the gripper
                     ]
                 )
-                # self.agent.reset(qpos)
-                # randomize the initial base pose of the robot, around the center of the table
-                radius = np.sqrt(self.table_scene.table_length ** 2 + self.table_scene.table_width ** 2) / 2
-                angle = self._episode_rng.uniform(0, 2 * np.pi)
-                x_pos = self.table_scene.table.pose.p[0][0] + radius * np.cos(angle)
-                y_pos = self.table_scene.table.pose.p[0][1] + radius * np.sin(angle)
-                # look at the center of the table
-                theta = np.arctan2(
-                    self.table_scene.table.pose.p[0][1] - y_pos,
-                    self.table_scene.table.pose.p[0][0] - x_pos
-                )
-                qpos[0] = x_pos
-                qpos[1] = y_pos
-                qpos[2] = theta
+                # # self.agent.reset(qpos)
+                # # randomize the initial base pose of the robot, around the center of the table
+                # radius = np.sqrt(self.table_scene.table_length ** 2 + self.table_scene.table_width ** 2) / 2
+                # angle = self._episode_rng.uniform(0, 2 * np.pi)
+                # x_pos = self.table_scene.table.pose.p[0][0] + radius * np.cos(angle)
+                # y_pos = self.table_scene.table.pose.p[0][1] + radius * np.sin(angle)
+                # # look at the center of the table
+                # theta = np.arctan2(
+                #     self.table_scene.table.pose.p[0][1] - y_pos,
+                #     self.table_scene.table.pose.p[0][0] - x_pos
+                # )
+                # qpos[0] = x_pos
+                # qpos[1] = y_pos
+                # qpos[2] = theta
 
                 self.agent.reset(qpos)
 

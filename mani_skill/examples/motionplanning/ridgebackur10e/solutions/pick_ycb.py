@@ -1,12 +1,15 @@
 import numpy as np
 import sapien
 import torch
+import trimesh
 
 from mani_skill.envs.tasks import PickSingleKitchenYCBEnv
 from mani_skill.examples.motionplanning.ridgebackur10e.motionplanner import \
     RidgebackUR10ePlanningSolver
 from mani_skill.examples.motionplanning.panda.utils import (
     compute_grasp_info_by_obb, get_actor_obb)
+from mani_skill.utils.common import quat_diff_rad
+from mani_skill.utils.geometry.rotation_conversions import quaternion_to_matrix
 
 
 def solve(env: PickSingleKitchenYCBEnv, seed=None, debug=False, vis=False):
@@ -20,12 +23,29 @@ def solve(env: PickSingleKitchenYCBEnv, seed=None, debug=False, vis=False):
         print_env_info=False,
     )
 
+
     # torch_planer =
 
     FINGER_LENGTH = 0.025
     env = env.unwrapped
 
-    grasp_pose = planner.find_best_grasp(env.obj)
+    # loop through the objects in the scene, and if they are not the object of interest, add them to the planner
+    for actor in env.scene.actors.values():
+        if not actor.name.startswith(env.model_id):
+            # get collision meshes
+            meshes = actor.get_collision_meshes()
+            for mesh in meshes:
+                # add the mesh to the planner
+                # get pointcloud from mesh
+                ptc = trimesh.sample.sample_surface(mesh, 1500)[0]
+                # to numpy
+                ptc = np.array(ptc)
+                planner.add_collision_pts(ptc)
+    get_ooi = lambda x: next(y for y in x if y.name.startswith(env.model_id))
+    ooi = get_ooi(env.scene.actors.values())
+
+    grasp_pose = planner.find_best_grasp(ooi)
+
     qpose = grasp_pose[1]
     grasp_pose = sapien.Pose(grasp_pose[0].p, grasp_pose[0].q)
 
@@ -58,14 +78,18 @@ def solve(env: PickSingleKitchenYCBEnv, seed=None, debug=False, vis=False):
     planner.move_to_pose_with_screw(grasp_pose)
     res = planner.close_gripper()
     planner.move_to_pose_with_screw(reach_pose)
-    # planner.move_to_qpose_withRRTConnect([qpose])
-    # planner.close_gripper()
+
     # -------------------------------------------------------------------------- #
     # Move to goal pose
     # -------------------------------------------------------------------------- #
     goal_pose = sapien.Pose(env.goal_site.pose.sp.p, reach_pose.q)
-    res = planner.move_to_pose_with_RRTConnect(goal_pose)
+
+
+    res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=True)
     # res = planner.move_to_pose_with_screw(goal_pose)
+    if res == -1:
+        planner.close()
+        return res
     print(res[4]['is_obj_placed'])
     if res[4]['is_obj_placed']:
         res[4]['success'] = torch.tensor([True])
