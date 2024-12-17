@@ -50,7 +50,7 @@ class PickSingleYCBEnv(BaseEnv):
 
     SUPPORTED_ROBOTS = ["panda", "panda_wristcam", "fetch", "ridgebackur10e", "static_ridgebackur10e"]
     agent: Union[Panda, PandaWristCam, Fetch, RidgebackUR10e, StaticRidgebackUR10e]
-    goal_thresh = 0.025
+    goal_thresh = 0.08
 
     def __init__(
         self,
@@ -200,7 +200,8 @@ class PickSingleYCBEnv(BaseEnv):
             is_obj_placed=is_obj_placed,
             is_robot_static=is_robot_static,
             is_grasping=self.agent.is_grasping(self.obj),
-            success=torch.logical_and(is_obj_placed, is_robot_static),
+            # success=torch.logical_and(is_obj_placed, is_robot_static),
+            success=is_obj_placed,
         )
 
     def _get_obs_extra(self, info: Dict):

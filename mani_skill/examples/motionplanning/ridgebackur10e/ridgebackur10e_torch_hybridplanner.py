@@ -26,7 +26,7 @@ from torch_robotics.torch_utils.seed import fix_random_seed
 from torch_robotics.torch_utils.torch_utils import get_torch_device
 from torch_robotics.visualizers.planning_visualizer import PlanningVisualizer
 
-from domains.maniskill.utils.manip_utils import *
+from planning.domains.maniskill.utils.manip_utils import *
 
 import gymnasium as gym
 from transforms3d.euler import quat2euler
@@ -173,7 +173,7 @@ def render_wait(gym_env,
 if __name__ == "__main__":
     base_file_name = Path(os.path.basename(__file__)).stem
 
-    seed = 14
+    seed = 12
     fix_random_seed(seed)
 
     device = get_device()
