@@ -16,7 +16,10 @@ from mani_skill.examples.motionplanning.ridgebackur10e.solutions import solvePic
 
 MP_SOLUTIONS = {
     "BarWaiter-v1": solvePickYCBUr,
+    "PickHeavyClutterYCB-v1": solvePickYCBUr,
     "PickSingleKitchenYCB-v1": solvePickYCBUr,
+    "PickCube-v1": solvePickYCBUr,
+    "PickBlock-v1": solvePickYCBUr,
 }
 
 
