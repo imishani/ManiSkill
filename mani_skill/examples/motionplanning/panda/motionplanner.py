@@ -69,28 +69,28 @@ class PandaArmMotionPlanningSolver:
     def setup_planner(self):
         link_names = [link.get_name() for link in self.robot.get_links()]
         joint_names = [joint.get_name() for joint in self.robot.get_active_joints()]
-        # planner = mplib.Planner(
-        #     urdf=self.env_agent.urdf_path,
-        #     srdf=self.env_agent.urdf_path.replace(".urdf", ".srdf"),
-        #     user_link_names=link_names,
-        #     user_joint_names=joint_names,
-        #     move_group="panda_hand_tcp",
-        #     joint_vel_limits=np.ones(7) * self.joint_vel_limits,
-        #     joint_acc_limits=np.ones(7) * self.joint_acc_limits,
-        #     use_convex=True,
-        # )
-        from mplib.sapien_utils import SapienPlanningWorld, SapienPlanner
-
-        planning_world = SapienPlanningWorld(
-            self.base_env.scene.sub_scenes[0],
-            [self.robot._objs[0]]
+        planner = mplib.Planner(
+            urdf=self.env_agent.urdf_path,
+            srdf=self.env_agent.urdf_path.replace(".urdf", ".srdf"),
+            user_link_names=link_names,
+            user_joint_names=joint_names,
+            move_group="panda_hand_tcp",
+            joint_vel_limits=np.ones(7) * self.joint_vel_limits,
+            joint_acc_limits=np.ones(7) * self.joint_acc_limits,
+            use_convex=True,
         )
-
-
-        planner = SapienPlanner(planning_world,
-                                "scene-0-panda_panda_hand_tcp",
-                                joint_vel_limits=np.ones(7) * self.joint_vel_limits,
-                                joint_acc_limits=np.ones(7) * self.joint_acc_limits)
+        # from mplib.sapien_utils import SapienPlanningWorld, SapienPlanner
+        #
+        # planning_world = SapienPlanningWorld(
+        #     self.base_env.scene.sub_scenes[0],
+        #     [self.robot._objs[0]]
+        # )
+        #
+        #
+        # planner = SapienPlanner(planning_world,
+        #                         "scene-0-panda_panda_hand_tcp",
+        #                         joint_vel_limits=np.ones(7) * self.joint_vel_limits,
+        #                         joint_acc_limits=np.ones(7) * self.joint_acc_limits)
 
         pose = mplib.pymp.Pose(p=self.base_pose.p, q=self.base_pose.q)
         # planner.set_base_pose(np.hstack([self.base_pose.p, self.base_pose.q]).reshape(1, 7))

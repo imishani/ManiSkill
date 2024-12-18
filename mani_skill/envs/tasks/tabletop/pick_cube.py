@@ -5,7 +5,7 @@ import sapien
 import torch
 
 import mani_skill.envs.utils.randomization as randomization
-from mani_skill.agents.robots import Fetch, Panda, RidgebackUR10e
+from mani_skill.agents.robots import Fetch, Panda, RidgebackUR10e, StaticRidgebackUR10e
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
 from mani_skill.utils import sapien_utils
@@ -33,8 +33,8 @@ class PickCubeEnv(BaseEnv):
     """
 
     _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/PickCube-v1_rt.mp4"
-    SUPPORTED_ROBOTS = ["panda", "fetch", "ridgebackur10e"]
-    agent: Union[Panda, Fetch, RidgebackUR10e]
+    SUPPORTED_ROBOTS = ["panda", "fetch", "ridgebackur10e", "static_ridgebackur10e"]
+    agent: Union[Panda, Fetch, RidgebackUR10e, StaticRidgebackUR10e]
     cube_half_size = 0.02
     goal_thresh = 0.025
 
@@ -52,8 +52,9 @@ class PickCubeEnv(BaseEnv):
         pose = sapien_utils.look_at([0.6, 0.7, 0.6], [0.0, 0.0, 0.35])
         return CameraConfig("render_camera", pose, 512, 512, 1, 0.01, 100)
 
-    def _load_agent(self, options: dict):
-        super()._load_agent(options, sapien.Pose(p=[-0.615, 0, 0]))
+    def _load_agent(self, options: dict,
+                    init_pose: sapien.Pose = sapien.Pose(p=[-0.615, 0, 0])):
+        super()._load_agent(options, init_pose)
 
     def _load_scene(self, options: dict):
         self.table_scene = TableSceneBuilder(
@@ -150,3 +151,10 @@ class PickCubeEnv(BaseEnv):
         self, obs: Any, action: torch.Tensor, info: Dict
     ):
         return self.compute_dense_reward(obs=obs, action=action, info=info) / 5
+
+@register_env("PickBlock-v1", max_episode_steps=50)
+class PickBlockEnv(PickCubeEnv):
+
+    def _load_agent(self, options: dict,
+                    init_pose: sapien.Pose = sapien.Pose(p=[-1.0, 0, 0])):
+        super()._load_agent(options, init_pose)

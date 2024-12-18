@@ -296,7 +296,7 @@ class PickSingleKitchenYCBEnv(PickSingleYCBEnv):
     @property
     def _default_human_render_camera_configs(self):
         pose = sapien_utils.look_at([1.0, 2.0, 2.0], [-0.12, 0.0, 0.35])
-        return CameraConfig("render_camera", pose, 2560, 2560, 1, 0.01, 100)
+        return CameraConfig("render_camera", pose, 512, 512, 1, 0.01, 100)
 
     def _load_scene(self, options: dict):
         global WARNED_ONCE
