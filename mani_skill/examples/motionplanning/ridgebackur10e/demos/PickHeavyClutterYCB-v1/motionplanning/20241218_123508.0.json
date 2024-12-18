@@ -1,0 +1,86 @@
+{
+  "env_info": {
+    "env_id": "PickHeavyClutterYCB-v1",
+    "env_kwargs": {
+      "obs_mode": "none",
+      "control_mode": "pd_joint_pos",
+      "render_mode": "rgb_array",
+      "reward_mode": "dense",
+      "sensor_configs": {
+        "shader_pack": "rt"
+      },
+      "human_render_camera_configs": {
+        "shader_pack": "rt"
+      },
+      "viewer_camera_configs": {
+        "shader_pack": "rt"
+      },
+      "sim_backend": "auto",
+      "robot_uids": "ridgebackur10e"
+    },
+    "max_episode_steps": 100
+  },
+  "commit_info": {
+    "commit_id": "8690f4869739aecaf3f77382b77eb6b9668c9794",
+    "branch": "dev/imishani"
+  },
+  "episodes": [
+    {
+      "episode_id": 0,
+      "episode_seed": 0,
+      "control_mode": "pd_joint_pos",
+      "elapsed_steps": 246,
+      "reset_kwargs": {
+        "options": {},
+        "seed": 0
+      },
+      "success": false
+    },
+    {
+      "episode_id": 1,
+      "episode_seed": 1,
+      "control_mode": "pd_joint_pos",
+      "elapsed_steps": 159,
+      "reset_kwargs": {
+        "options": {},
+        "seed": 1
+      },
+      "success": false
+    },
+    {
+      "episode_id": 2,
+      "episode_seed": 2,
+      "control_mode": "pd_joint_pos",
+      "elapsed_steps": 192,
+      "reset_kwargs": {
+        "options": {},
+        "seed": 2
+      },
+      "success": false
+    },
+    {
+      "episode_id": 3,
+      "episode_seed": 3,
+      "control_mode": "pd_joint_pos",
+      "elapsed_steps": 375,
+      "reset_kwargs": {
+        "options": {},
+        "seed": 3
+      },
+      "success": false
+    },
+    {
+      "episode_id": 4,
+      "episode_seed": 4,
+      "control_mode": "pd_joint_pos",
+      "elapsed_steps": 250,
+      "reset_kwargs": {
+        "options": {},
+        "seed": 4
+      },
+      "success": false
+    }
+  ],
+  "source_type": "motionplanning",
+  "source_desc": "official motion planning solution from ManiSkill contributors"
+}

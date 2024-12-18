@@ -3,7 +3,7 @@ from .lift_peg_upright import LiftPegUprightEnv
 from .peg_insertion_side import PegInsertionSideEnv
 from .pick_clutter_ycb import PickClutterYCBEnv
 from .pick_heavy_clutter_ycb import PickHeavyClutterYCBEnv
-from .pick_cube import PickCubeEnv
+from .pick_cube import PickCubeEnv,PickBlockEnv
 from .pick_single_ycb import PickSingleYCBEnv,PickSingleKitchenYCBEnv
 from .plug_charger import PlugChargerEnv
 from .pull_cube import PullCubeEnv

@@ -207,13 +207,13 @@ class RidgebackUR10ePlanningSolver:
             constraint_function=self.make_f() if constrain else None,
             constraint_jacobian=self.make_j() if constrain else None,
             constraint_tolerance=0.05 if constrain else 0.001,
-            planning_time=5 if constrain else 1,
+            planning_time=5 if constrain else 3,
         )
         if result["status"] != "Success":
             print(result["status"])
-            # self.render_wait()
+            self.render_wait()
             return -1
-        # self.render_wait()
+        self.render_wait()
         if dry_run:
             return result
         return self.follow_path(result, refine_steps=refine_steps)
