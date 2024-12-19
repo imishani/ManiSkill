@@ -42,14 +42,11 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     # loop through the objects in the scene, and if they are not the object of interest, add them to the planner
     for actor in env.scene.actors.values():
         if actor.per_scene_id[ind_env] != target.per_scene_id[ind_env]:
-        # if actor.per_scene_id[ind_env] != env.obj.per_scene_id[ind_env]:
-        # if not actor.name.startswith(env.model_id):
+        # if True:
             # get collision meshes
             meshes = actor.get_collision_meshes()
             for mesh in meshes:
-                # add the mesh to the planner
-                # get pointcloud from mesh
-                ptc = trimesh.sample.sample_surface(mesh, 1500)[0]
+                ptc = trimesh.sample.sample_surface(mesh, 2000)[0]
                 # to numpy
                 ptc = np.array(ptc)
                 planner.add_collision_pts(ptc)
@@ -58,7 +55,7 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     # get_ooi = lambda x: next(y for y in x if y.per_scene_id[ind_env] == env.obj.per_scene_id[ind_env])
     ooi = get_ooi(env.scene.actors.values())
     planner.render_wait()
-    grasp_pose = planner.find_best_grasp(ooi)
+    grasp_pose = planner.find_best_grasp(ooi, n_samples=100)
 
     qpose = grasp_pose[1]
     grasp_pose = sapien.Pose(grasp_pose[0].p, grasp_pose[0].q)
@@ -84,7 +81,34 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     # Reach
     # -------------------------------------------------------------------------- #
     reach_pose = grasp_pose * sapien.Pose([0., 0, 0.1])
-    planner.move_to_pose_with_RRTConnect(reach_pose, refine_steps=10)
+
+    meshes = ooi.get_collision_meshes()
+    for mesh in meshes:
+        # add the mesh to the planner
+        # get pointcloud from mesh
+        ptc = trimesh.sample.sample_surface(mesh, 2000)[0]
+        # to numpy
+        ptc = np.array(ptc)
+        planner.add_collision_pts(ptc)
+
+    planner.move_to_pose_with_RRTConnect(reach_pose, refine_steps=0)
+
+    planner.clear_collisions()
+
+    for actor in env.scene.actors.values():
+        if actor.per_scene_id[ind_env] != target.per_scene_id[ind_env]:
+        # if actor.per_scene_id[ind_env] != env.obj.per_scene_id[ind_env]:
+        # if not actor.name.startswith(env.model_id):
+            # get collision meshes
+            meshes = actor.get_collision_meshes()
+            for mesh in meshes:
+                # add the mesh to the planner
+                # get pointcloud from mesh
+                ptc = trimesh.sample.sample_surface(mesh, 2000)[0]
+                # to numpy
+                ptc = np.array(ptc)
+                planner.add_collision_pts(ptc)
+
 
     # -------------------------------------------------------------------------- #
     # Grasp
@@ -99,8 +123,8 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     goal_pose = sapien.Pose(env.goal_site.pose.sp.p, reach_pose.q)
 
 
-    res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=True)
-    # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=False)
+    # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=True)
+    res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=False)
     # res = planner.move_to_pose_with_screw(goal_pose)
     if res == -1:
         planner.close()

@@ -158,3 +158,66 @@ class PickBlockEnv(PickCubeEnv):
     def _load_agent(self, options: dict,
                     init_pose: sapien.Pose = sapien.Pose(p=[-1.0, 0, 0])):
         super()._load_agent(options, init_pose)
+
+    def _load_scene(self, options: dict):
+        self.table_scene = TableSceneBuilder(
+            self, robot_init_qpos_noise=self.robot_init_qpos_noise
+        )
+        self.table_scene.build(scale=0.9)
+        self.cube = actors.build_box(
+            self.scene,
+            half_sizes=(self.cube_half_size*4, self.cube_half_size*4, self.cube_half_size/1.5),
+            color=[1, 0, 0, 1],
+            name="cube",
+            initial_pose=sapien.Pose(p=[0, 0, self.cube_half_size/1.5]),
+        )
+        self.cube.set_mass(self.cube.get_mass() * 0.1)
+
+        self.goal_site = actors.build_sphere(
+            self.scene,
+            radius=self.goal_thresh*10,
+            color=[0, 1, 0, 0.2],
+            name="goal_site",
+            body_type="kinematic",
+            add_collision=False,
+            initial_pose=sapien.Pose(),
+        )
+        self._hidden_objects.append(self.goal_site)
+
+    def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
+        with torch.device(self.device):
+            b = len(env_idx)
+            self.table_scene.initialize(env_idx)
+            xyz = torch.zeros((b, 3))
+            # put it on the edge of the table
+            x_table_center = self.table_scene.table.pose.p[:, 0]
+            y_table_center = self.table_scene.table.pose.p[:, 1]
+            dim = self.table_scene.table_length, self.table_scene.table_width
+
+            noise = torch.rand(2) * 0.01 + 0.02
+
+            # we have for options for the position of the object -- 4 edges of the table with some noise
+            regions_for_sampling = [
+                # [x_table_center + dim[0]/2, 0],
+                [x_table_center - dim[0] / 2, 0],
+                [0, y_table_center + dim[1]/2],
+                [0, y_table_center - dim[1]/2]
+            ]
+
+            # region = regions_for_sampling[torch.randint(4, (b,))]
+            region = regions_for_sampling[torch.randint(3, (b,))]
+            idx = torch.where(torch.tensor(region) == 0)[0]
+            center = (x_table_center, y_table_center)
+            xyz[:, 1 - idx] = region[1 - idx] - torch.sign(region[1 - idx] - center[1 - idx]) * noise[1 - idx]
+
+            xyz[:, idx] = center[idx] + (torch.rand((b,)) - 0.5) * dim[idx]
+
+            xyz[:, 2] = self.cube_half_size / 1.5
+
+            qs = randomization.random_quaternions(b, lock_x=True, lock_y=True)
+            self.cube.set_pose(Pose.create_from_pq(xyz, qs))
+
+            goal_xyz = torch.zeros((b, 3))
+            goal_xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
+            goal_xyz[:, 2] = torch.rand((b)) * 0.3 + xyz[:, 2]
+            self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))

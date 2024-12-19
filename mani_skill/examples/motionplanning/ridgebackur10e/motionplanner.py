@@ -207,7 +207,7 @@ class RidgebackUR10ePlanningSolver:
             constraint_function=self.make_f() if constrain else None,
             constraint_jacobian=self.make_j() if constrain else None,
             constraint_tolerance=0.05 if constrain else 0.001,
-            planning_time=5 if constrain else 3,
+            planning_time=5 if constrain else 1,
         )
         if result["status"] != "Success":
             print(result["status"])
@@ -297,7 +297,7 @@ class RidgebackUR10ePlanningSolver:
                          [aabb_o3d.max_bound[0], aabb_o3d.max_bound[1], aabb_o3d.max_bound[2]]])
         pcd = mesh_o3d.sample_points_uniformly(number_of_points=5000)
         pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.1, max_nn=30))
-        pcd.orient_normals_consistent_tangent_plane(k=100)
+        # pcd.orient_normals_consistent_tangent_plane(k=100)
         if plot:
             o3d.visualization.draw_geometries([pcd, aabb_o3d],
                                               point_show_normal=True,  # Show the normals as small lines
@@ -323,7 +323,7 @@ class RidgebackUR10ePlanningSolver:
             # sample a point from the point cloud
             # ee_position = pc[np.random.choice(pc.shape[0])]
             ee_orientation = np.random.uniform(-np.pi, np.pi, size=3)
-            ee_orientation[:2] *= 0.1
+            # ee_orientation[:2] *= 0.6
 
             ee_pose = sapien.Pose(p=ee_position, q=euler.euler2quat(*ee_orientation))
             # # transform with respect to the base
