@@ -495,7 +495,7 @@ class StaticRidgebackUR10e(BaseAgent):
     urdf_path = f"{PACKAGE_ASSET_DIR}/robots/ridgeback_ur10e/static_ridgeback_ur10e.urdf"
     urdf_config = dict(
         _materials=dict(
-            gripper=dict(static_friction=2.0, dynamic_friction=2.0, restitution=0.0)
+            gripper=dict(static_friction=4.0, dynamic_friction=4.0, restitution=0.0)
         ),
         link=dict(
             left_inner_finger_pad=dict(
