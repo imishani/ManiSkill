@@ -211,9 +211,9 @@ class RidgebackUR10ePlanningSolver:
         )
         if result["status"] != "Success":
             print(result["status"])
-            self.render_wait()
+            # self.render_wait()
             return -1
-        self.render_wait()
+        # self.render_wait()
         if dry_run:
             return result
         return self.follow_path(result, refine_steps=refine_steps)
@@ -238,7 +238,7 @@ class RidgebackUR10ePlanningSolver:
         return self.follow_path(result, refine_steps=refine_steps)
 
     def move_to_pose_with_screw(
-        self, pose: sapien.Pose, dry_run: bool = False, refine_steps: int = 0
+        self, pose: sapien.Pose, dry_run: bool = False, refine_steps: int = 0, wrt_world=True
     ):
         pose = to_sapien_pose(pose)
         # try screw two times before giving up
@@ -250,7 +250,9 @@ class RidgebackUR10ePlanningSolver:
             mplib_pose,
             self.robot.get_qpos().cpu().numpy()[0],
             time_step=self.base_env.control_timestep,
+            qpos_step=0.05,
             # use_point_cloud=self.use_point_cloud,
+            wrt_world=wrt_world,
         )
         if result["status"] != "Success":
             result = self.planner.plan_screw(
@@ -258,6 +260,9 @@ class RidgebackUR10ePlanningSolver:
                 self.robot.get_qpos().cpu().numpy()[0],
                 time_step=self.base_env.control_timestep/2,
                 # use_point_cloud=self.use_point_cloud,
+                qpos_step=0.05,
+                # use_point_cloud=self.use_point_cloud,
+                wrt_world=wrt_world,
             )
             if result["status"] != "Success":
                 print(result["status"])
@@ -320,12 +325,31 @@ class RidgebackUR10ePlanningSolver:
         obj_min, obj_max = aabb[0, :], aabb[1, :]
         for _ in range(n_samples):
             ee_position = np.random.uniform(obj_min, obj_max, size=3)
-            # sample a point from the point cloud
-            # ee_position = pc[np.random.choice(pc.shape[0])]
-            ee_orientation = np.random.uniform(-np.pi, np.pi, size=3)
-            # ee_orientation[:2] *= 0.6
+            ee_position[2] = (obj_max[2] - obj_min[2]) / 2
+            # # if x or y are close to the center, go back towards the edge of the object
+            # if np.abs(ee_position[0] - (obj_max[0] - obj_min[0]) / 2) < 0.08:
+            #     ee_position[0] = np.random.choice([obj_min[0], obj_max[0]])
+            #     ee_position[0] += 0.05 * ((obj_max[0] - obj_min[0]) / 2 - ee_position[0])
+            # if np.abs(ee_position[1] - (obj_max[1] - obj_min[1]) / 2) < 0.08:
+            #     ee_position[1] = np.random.choice([obj_min[1], obj_max[1]])
+            #     ee_position[1] += 0.05 * ((obj_max[1] - obj_min[1]) / 2 - ee_position[1])
 
-            ee_pose = sapien.Pose(p=ee_position, q=euler.euler2quat(*ee_orientation))
+            # sample a point from the point cloud
+            ee_orientation = np.random.uniform(-np.pi, np.pi, size=3)
+            # 1.
+            # ee_orientation[:2] *= 0.6
+            # ee_pose = sapien.Pose(p=ee_position, q=euler.euler2quat(*ee_orientation))
+            # 2.
+            # choices = [np.array([0, -np.pi / 2., np.random.choice([-1., 1.]) * np.pi / 2.]),
+            #            np.array([np.random.choice([-1., 1.]) * np.pi / 2., 0., 0.])]
+            # ee_orientation = choices[np.random.choice([0, 1])]
+            # ee_pose = sapien.Pose(p=ee_position, q=euler.euler2quat(*ee_orientation, axes="rxyz"))
+            # 3.
+            ee_orientation[2] = 0
+            ee_orientation[1] = -np.pi / 2
+            ee_orientation[0] *= 0.6
+            ee_pose = sapien.Pose(p=ee_position, q=euler.euler2quat(*ee_orientation, axes="szyx"))
+
             # # transform with respect to the base
             base_pose = self.robot.get_pose()
             base_pose = sapien.Pose(p=base_pose.p.squeeze().cpu().numpy(),
@@ -477,6 +501,7 @@ class RidgebackUR10ePlanningSolver:
     def clear_collisions(self):
         self.all_collision_pts = None
         self.use_point_cloud = False
+        self.planner.remove_point_cloud()
 
     def close(self):
         pass

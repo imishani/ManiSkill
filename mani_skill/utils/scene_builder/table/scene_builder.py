@@ -187,7 +187,7 @@ class TableSceneBuilder(SceneBuilder):
                  ]
             )
             self.env.agent.reset(qpos)
-            self.env.agent.robot.set_pose(sapien.Pose([-1., 0, -self.table_height]))
+            self.env.agent.robot.set_pose(sapien.Pose([-1.2, 0, -self.table_height]))
             self.ground.set_collision_group_bit(
                 group=2, bit_idx=RIDGEBACK_WHEELS_COLLISION_BIT, bit=1
             )

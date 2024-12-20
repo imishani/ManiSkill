@@ -1,7 +1,12 @@
+import mplib
 import numpy as np
 import sapien
 import torch
 import trimesh
+
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
 
 from mani_skill.envs.tasks import PickSingleKitchenYCBEnv, PickHeavyClutterYCBEnv, PickCubeEnv, PickBlockEnv
 from mani_skill.examples.motionplanning.ridgebackur10e.motionplanner import \
@@ -40,6 +45,8 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
         raise ValueError("Unknown environment type")
 
     # loop through the objects in the scene, and if they are not the object of interest, add them to the planner
+
+    ptc_array = None
     for actor in env.scene.actors.values():
         if actor.per_scene_id[ind_env] != target.per_scene_id[ind_env]:
         # if True:
@@ -48,13 +55,17 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
             for mesh in meshes:
                 ptc = trimesh.sample.sample_surface(mesh, 2000)[0]
                 # to numpy
-                ptc = np.array(ptc)
-                planner.add_collision_pts(ptc)
+                if ptc_array is None:
+                    ptc_array = np.array(ptc)
+                else:
+                    ptc_array = np.concatenate([ptc_array, np.array(ptc)])
+    planner.add_collision_pts(ptc_array)
+
     # get_ooi = lambda x: next(y for y in x if y.name.startswith(env.model_id))
     get_ooi = lambda x: next(y for y in x if y.per_scene_id[ind_env] == target.per_scene_id[ind_env])
     # get_ooi = lambda x: next(y for y in x if y.per_scene_id[ind_env] == env.obj.per_scene_id[ind_env])
     ooi = get_ooi(env.scene.actors.values())
-    planner.render_wait()
+
     grasp_pose = planner.find_best_grasp(ooi, n_samples=100)
 
     qpose = grasp_pose[1]
@@ -80,21 +91,44 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     # -------------------------------------------------------------------------- #
     # Reach
     # -------------------------------------------------------------------------- #
-    reach_pose = grasp_pose * sapien.Pose([0., 0, 0.1])
+    grasp_pose = grasp_pose * sapien.Pose([0., 0, 0.05])
+    reach_pose = grasp_pose * sapien.Pose([0., 0, 0.10])
 
     meshes = ooi.get_collision_meshes()
+
+    ptc_array = None
     for mesh in meshes:
         # add the mesh to the planner
         # get pointcloud from mesh
         ptc = trimesh.sample.sample_surface(mesh, 2000)[0]
         # to numpy
-        ptc = np.array(ptc)
-        planner.add_collision_pts(ptc)
+        if ptc_array is None:
+            ptc_array = np.array(ptc)
+        else:
+            ptc_array = np.concatenate([ptc_array, np.array(ptc)])
+    planner.add_collision_pts(ptc_array)
 
-    planner.move_to_pose_with_RRTConnect(reach_pose, refine_steps=0)
+
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # ax.scatter(ptc[:, 0], ptc[:, 1], ptc[:, 2], s=1)
+    # ax.set_xlim(-2, 2)
+    # ax.set_ylim(-2, 2)
+    # ax.set_zlim(-1, 2)
+    # plt.show()
+
+    planner.move_to_pose_with_RRTConnect(reach_pose, refine_steps=20)
 
     planner.clear_collisions()
+    # -------------------------------------------------------------------------- #
+    # Grasp
+    # -------------------------------------------------------------------------- #
+    planner.move_to_pose_with_screw(grasp_pose, refine_steps=10)
+    res = planner.close_gripper()
+    reach_pose.p[2] += 0.1
+    planner.move_to_pose_with_screw(reach_pose, refine_steps=10)
 
+    ptc_array = None
     for actor in env.scene.actors.values():
         if actor.per_scene_id[ind_env] != target.per_scene_id[ind_env]:
         # if actor.per_scene_id[ind_env] != env.obj.per_scene_id[ind_env]:
@@ -105,17 +139,19 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
                 # add the mesh to the planner
                 # get pointcloud from mesh
                 ptc = trimesh.sample.sample_surface(mesh, 2000)[0]
-                # to numpy
-                ptc = np.array(ptc)
-                planner.add_collision_pts(ptc)
+                if ptc_array is None:
+                    ptc_array = np.array(ptc)
+                else:
+                    ptc_array = np.concatenate([ptc_array, np.array(ptc)])
+    planner.add_collision_pts(ptc_array)
+
+    ooi_relative_pose = ooi.pose.inv() * planner.robot.get_links()[-1].pose
+    mplib_rel_pose = mplib.Pose(ooi_relative_pose.p.squeeze().cpu().numpy(),
+                                ooi_relative_pose.q.squeeze().cpu().numpy())
+    planner.planner.update_attached_box(size=2*ooi._bodies[0].collision_shapes[0].half_size,
+                                        pose=mplib_rel_pose)
 
 
-    # -------------------------------------------------------------------------- #
-    # Grasp
-    # -------------------------------------------------------------------------- #
-    planner.move_to_pose_with_screw(grasp_pose)
-    res = planner.close_gripper()
-    planner.move_to_pose_with_screw(reach_pose)
 
     # -------------------------------------------------------------------------- #
     # Move to goal pose
@@ -129,8 +165,10 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     if res == -1:
         planner.close()
         return res
-    print(res[4]['is_obj_placed'])
+
+    print(res)
     if res[4]['is_obj_placed']:
         res[4]['success'] = torch.tensor([True])
+
     planner.close()
     return res
