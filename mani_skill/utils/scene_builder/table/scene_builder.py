@@ -169,7 +169,7 @@ class TableSceneBuilder(SceneBuilder):
         elif self.env.robot_uids == "ridgebackur10e":
             qpos = np.array(
                 [-1., 0, 0,
-                 0., -1.0472, -2., 0., 1.5708, 0.,
+                 0., -1.0472, -2., 0., -3.*np.pi/2., 0.,
                  0., 0.,
                  0, 0, 0, 0  # Passive joints for the gripper
                  ]
@@ -181,7 +181,7 @@ class TableSceneBuilder(SceneBuilder):
             )
         elif self.env.robot_uids == "static_ridgebackur10e":
             qpos = np.array(
-                [0., -1.0472, -2., 0., 1.5708, 0.,
+                [0., -1.0472, -2., 0., -3.*np.pi/2., 0.,
                  0., 0.,
                  0, 0, 0, 0  # Passive joints for the gripper
                  ]

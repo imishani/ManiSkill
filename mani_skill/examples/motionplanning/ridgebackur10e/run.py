@@ -12,6 +12,7 @@ from mani_skill.trajectory.merge_trajectory import merge_trajectories
 # from mani_skill.examples.motionplanning.panda.solutions import solvePushCube, solvePickCube, solveStackCube, \
 #     solvePegInsertionSide, solvePlugCharger, solvePullCubeTool, solveLiftPegUpright, solvePullCube
 from mani_skill.examples.motionplanning.ridgebackur10e.solutions import solvePickYCBUr
+from mani_skill.examples.motionplanning.ridgebackur10e.solutions import solvePushBlockUr
 
 
 MP_SOLUTIONS = {
@@ -20,6 +21,7 @@ MP_SOLUTIONS = {
     "PickSingleKitchenYCB-v1": solvePickYCBUr,
     "PickCube-v1": solvePickYCBUr,
     "PickBlock-v1": solvePickYCBUr,
+    "PushBlock-v1": solvePushBlockUr,
 }
 
 
