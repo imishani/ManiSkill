@@ -16,7 +16,7 @@ from mani_skill.utils.geometry.rotation_conversions import euler_angles_to_matri
 from transforms3d.euler import euler2quat, quat2mat, euler2mat, quat2euler
 
 kitchen_keywords = [
-    'pitcher',
+    # 'pitcher',
     'mug',
     'cup',
     'plate',
@@ -267,7 +267,7 @@ def visualize_scene(scene, save_path=None):
     else:
         plt.show()
 
-def generate_kitchen_item_scenes(max_scenes=10, min_items=15, max_items=18):
+def generate_kitchen_item_scenes(max_scenes=10, min_items=10, max_items=15):
     """
     Generate new scenes with kitchen item permutations.
     """
@@ -339,8 +339,8 @@ def main(output_file='kitchen_item_permutations.json'):
     Main function to generate kitchen item permutation scenes.
     """
     # Seed for reproducibility
-    random.seed(42)
-    np.random.seed(42)
+    random.seed(30)
+    np.random.seed(30)
 
     # Load YCB dataset
     global ycb_dataset
