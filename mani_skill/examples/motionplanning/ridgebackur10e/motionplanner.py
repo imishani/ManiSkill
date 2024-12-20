@@ -258,10 +258,9 @@ class RidgebackUR10ePlanningSolver:
             result = self.planner.plan_screw(
                 mplib_pose,
                 self.robot.get_qpos().cpu().numpy()[0],
-                time_step=self.base_env.control_timestep/2,
+                time_step=self.base_env.control_timestep,
                 # use_point_cloud=self.use_point_cloud,
                 qpos_step=0.05,
-                # use_point_cloud=self.use_point_cloud,
                 wrt_world=wrt_world,
             )
             if result["status"] != "Success":
