@@ -181,6 +181,34 @@ class RidgebackUR10ePlanningSolver:
         # constraint jacobian ankor end
         return j
 
+
+    def set_robot_pose(self, pose: sapien.Pose):
+        pose = to_sapien_pose(pose)
+        if self.grasp_pose_visual is not None:
+            self.grasp_pose_visual.set_pose(pose)
+        pose = sapien.Pose(p=pose.p, q=pose.q)
+        # get the ik solution for the pose
+        mplib_pose = mplib.pymp.Pose(p=pose.p, q=pose.q)
+        # get current qpos
+        qpos = self.robot.get_qpos().cpu().numpy()[0]
+
+        current_qpos = np.clip(
+            qpos, self.planner.joint_limits[:, 0], self.planner.joint_limits[:, 1]
+        )
+        current_qpos = self.planner.pad_move_group_qpos(current_qpos)
+        # wrt world
+        mplib_pose = self.planner._transform_goal_to_wrt_base(mplib_pose)
+
+        status, ik_solution = self.planner.IK(mplib_pose, current_qpos, return_closest=True)
+        if status == "Success":
+            # add the gripper state
+            self.robot.set_qpos(ik_solution)
+        else:
+            print("IK failed")
+            return -1
+
+
+
     def move_to_pose_with_RRTConnect(
         self, pose: sapien.Pose, dry_run: bool = False, refine_steps: int = 0,
             constrain=False

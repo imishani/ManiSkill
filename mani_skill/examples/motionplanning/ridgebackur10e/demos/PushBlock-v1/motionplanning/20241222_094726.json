@@ -7,21 +7,21 @@
       "render_mode": "rgb_array",
       "reward_mode": "dense",
       "sensor_configs": {
-        "shader_pack": "rt"
+        "shader_pack": "default"
       },
       "human_render_camera_configs": {
-        "shader_pack": "rt"
+        "shader_pack": "default"
       },
       "viewer_camera_configs": {
-        "shader_pack": "rt"
+        "shader_pack": "default"
       },
       "sim_backend": "auto",
-      "robot_uids": "ridgebackur10e"
+      "robot_uids": "static_ridgebackur10e"
     },
     "max_episode_steps": 50
   },
   "commit_info": {
-    "commit_id": "47dd121edc285dfebb08ef2e7a714870180023f0",
+    "commit_id": "98c498cef72afcc7d4c8479fc4603c0953304727",
     "branch": "dev/imishani"
   },
   "episodes": [
@@ -29,7 +29,7 @@
       "episode_id": 0,
       "episode_seed": 0,
       "control_mode": "pd_joint_pos",
-      "elapsed_steps": 179,
+      "elapsed_steps": 28,
       "reset_kwargs": {
         "options": {},
         "seed": 0
@@ -40,40 +40,40 @@
       "episode_id": 1,
       "episode_seed": 1,
       "control_mode": "pd_joint_pos",
-      "elapsed_steps": 165,
+      "elapsed_steps": 39,
       "reset_kwargs": {
         "options": {},
         "seed": 1
       },
-      "success": false
+      "success": true
     },
     {
       "episode_id": 2,
       "episode_seed": 2,
       "control_mode": "pd_joint_pos",
-      "elapsed_steps": 165,
+      "elapsed_steps": 27,
       "reset_kwargs": {
         "options": {},
         "seed": 2
       },
-      "success": false
+      "success": true
     },
     {
       "episode_id": 3,
       "episode_seed": 3,
       "control_mode": "pd_joint_pos",
-      "elapsed_steps": 78,
+      "elapsed_steps": 34,
       "reset_kwargs": {
         "options": {},
         "seed": 3
       },
-      "success": false
+      "success": true
     },
     {
       "episode_id": 4,
       "episode_seed": 4,
       "control_mode": "pd_joint_pos",
-      "elapsed_steps": 174,
+      "elapsed_steps": 40,
       "reset_kwargs": {
         "options": {},
         "seed": 4
@@ -84,12 +84,56 @@
       "episode_id": 5,
       "episode_seed": 5,
       "control_mode": "pd_joint_pos",
-      "elapsed_steps": 6,
+      "elapsed_steps": 39,
       "reset_kwargs": {
         "options": {},
         "seed": 5
       },
-      "success": false
+      "success": true
+    },
+    {
+      "episode_id": 6,
+      "episode_seed": 6,
+      "control_mode": "pd_joint_pos",
+      "elapsed_steps": 24,
+      "reset_kwargs": {
+        "options": {},
+        "seed": 6
+      },
+      "success": true
+    },
+    {
+      "episode_id": 7,
+      "episode_seed": 7,
+      "control_mode": "pd_joint_pos",
+      "elapsed_steps": 28,
+      "reset_kwargs": {
+        "options": {},
+        "seed": 7
+      },
+      "success": true
+    },
+    {
+      "episode_id": 8,
+      "episode_seed": 8,
+      "control_mode": "pd_joint_pos",
+      "elapsed_steps": 30,
+      "reset_kwargs": {
+        "options": {},
+        "seed": 8
+      },
+      "success": true
+    },
+    {
+      "episode_id": 9,
+      "episode_seed": 9,
+      "control_mode": "pd_joint_pos",
+      "elapsed_steps": 45,
+      "reset_kwargs": {
+        "options": {},
+        "seed": 9
+      },
+      "success": true
     }
   ],
   "source_type": "motionplanning",

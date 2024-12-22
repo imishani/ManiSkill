@@ -44,7 +44,8 @@ def solve(env: PushBlockEnv, seed=None, debug=False, vis=False):
                     ptc_array = np.concatenate([ptc_array, np.array(ptc)])
     planner.add_collision_pts(ptc_array)
 
-    planner.move_to_pose_with_RRTConnect(reach_pose)
+    planner.set_robot_pose(reach_pose)
+    # planner.move_to_pose_with_RRTConnect(reach_pose)
 
     # -------------------------------------------------------------------------- #
     # Move to goal pose
