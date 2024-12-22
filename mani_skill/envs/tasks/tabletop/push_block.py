@@ -98,7 +98,7 @@ class PushBlockEnv(BaseEnv):
             name="block",
             initial_pose=sapien.Pose(p=[0, 0, self.block_half_size[2]]),
         )
-        self.obj.set_mass(self.obj.get_mass() * 0.1)
+        #self.obj.set_mass(self.obj.get_mass() * 0.1)
 
         # we also add in red/white target to visualize where we want the cube to be pushed to
         # we specify add_collisions=False as we only use this as a visual for videos and do not want it to affect the actual physics
@@ -135,8 +135,8 @@ class PushBlockEnv(BaseEnv):
             xyz = torch.zeros((b, 3))
             # xyz[..., :2] = torch.rand((b, 2)) * 0.5 - 0.25
             xyz[..., :2] = torch.rand((b, 2)) * 0.6 - 0.4
-            xyz[..., 0] += self.table_scene.table.pose.p[..., 0]
-            xyz[..., 1] += self.table_scene.table.pose.p[..., 1]
+            xyz[..., 0] += self.table_scene.table.pose.p[env_idx, 0]
+            xyz[..., 1] += self.table_scene.table.pose.p[env_idx, 1]
             xyz[..., 2] = self.block_half_size[2]
 
             q = randomization.random_quaternions(b, lock_x=True, lock_y=True)
@@ -156,11 +156,11 @@ class PushBlockEnv(BaseEnv):
 
             # if target positions are outside the table, clip them to the edge
             target_region_xyz[..., 1] = torch.clamp(target_region_xyz[..., 1],
-                                                    - (self.table_scene.table_width / 2.) + self.table_scene.table.pose.p[..., 1],
-                                                    (self.table_scene.table_width / 2.) + self.table_scene.table.pose.p[..., 1]) # TODO: not sure that is true for batch
+                                                    - (self.table_scene.table_width / 2.) + self.table_scene.table.pose.p[env_idx, 1],
+                                                    (self.table_scene.table_width / 2.) + self.table_scene.table.pose.p[env_idx, 1]) # TODO: not sure that is true for batch
             target_region_xyz[..., 0] = torch.clamp(target_region_xyz[..., 0],
-                                                    - (self.table_scene.table_length / 2.) + self.table_scene.table.pose.p[..., 0],
-                                                    (self.table_scene.table_length / 2.) + self.table_scene.table.pose.p[..., 0]) # TODO: not sure that is true for batch
+                                                    - (self.table_scene.table_length / 2.) + self.table_scene.table.pose.p[env_idx, 0],
+                                                    (self.table_scene.table_length / 2.) + self.table_scene.table.pose.p[env_idx, 0]) # TODO: not sure that is true for batch
 
 
             # set a little bit above 0 so the target is sitting on the table
@@ -204,14 +204,13 @@ class PushBlockEnv(BaseEnv):
     def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
         # We also create a pose marking where the robot should push the cube from that is easiest (pushing from behind the cube)
         # get the direction of the push (target pose - block pose)
-        push_direction = (self.goal_region.pose.p - self.obj.pose.p / torch.norm(self.goal_region.pose.p - self.obj.pose.p))[..., :2]
-        # add 0 to the z component to make it a 2D push direction
-        push_direction = torch.cat([push_direction, torch.zeros_like(push_direction[..., :1])], dim=-1)
-
+        push_direction = (self.goal_region.pose.p - self.obj.pose.p) / torch.norm(self.goal_region.pose.p - self.obj.pose.p)
+        push_direction[..., 2] = 0  # add 0 to the z component to make it a 2D push direction
+        
         tcp_push_pose = Pose.create_from_pq(
             p=self.obj.pose.p - (self.block_half_size[0] * 2.0 * push_direction)
         )
-        tcp_push_pose.set_p(tcp_push_pose.p + torch.tensor([0, 0, 0.03]))
+        tcp_push_pose.set_p(tcp_push_pose.p + torch.tensor([0, 0, 0.03]).to(self.device))
 
         tcp_to_push_pose = tcp_push_pose.p - self.agent.tcp.pose.p
         tcp_to_push_pose_dist = torch.linalg.norm(tcp_to_push_pose, axis=1)
@@ -221,7 +220,7 @@ class PushBlockEnv(BaseEnv):
         # compute a placement reward to encourage robot to move the cube to the center of the goal region
         # we further multiply the place_reward by a mask reached so we only add the place reward if the robot has reached the desired push pose
         # This reward design helps train RL agents faster by staging the reward out.
-        reached = tcp_to_push_pose_dist < 0.01
+        reached = tcp_to_push_pose_dist < 0.05
         obj_to_goal_dist = torch.linalg.norm(
             self.obj.pose.p[..., :2] - self.goal_region.pose.p[..., :2], axis=1
         )
