@@ -274,7 +274,7 @@ class RidgebackUR10e(BaseAgent):
             pd_ee_delta_pos=dict(
                 base=base_pd_joint_vel,
                 arm=arm_pd_ee_delta_pos,
-                finger=finger_mimic_pd_joint_pos,
+                finger=finger_mimic_pd_joint_delta_pos,
                 passive_finger_joints=passive_finger_joints,
                 # gripper=gripper_pd_joint_pos,
 #                 body=body_pd_joint_delta_pos,
@@ -721,7 +721,7 @@ class StaticRidgebackUR10e(BaseAgent):
             ),
             pd_ee_delta_pos=dict(
                 arm=arm_pd_ee_delta_pos,
-                finger=finger_mimic_pd_joint_pos,
+                finger=finger_mimic_pd_joint_delta_pos,
                 passive_finger_joints=passive_finger_joints,
                 # gripper=gripper_pd_joint_pos,
 #                 body=body_pd_joint_delta_pos,
