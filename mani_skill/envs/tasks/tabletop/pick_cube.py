@@ -39,7 +39,7 @@ class PickCubeEnv(BaseEnv):
     # goal_thresh = 0.025
     goal_thresh = 0.05
 
-    def __init__(self, *args, robot_uids="panda", robot_init_qpos_noise=0.02, **kwargs):
+    def __init__(self, *args, robot_uids="static_ridgebackur10e", robot_init_qpos_noise=0.02, **kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 

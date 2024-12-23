@@ -59,6 +59,7 @@ def _main(args, proc_id: int = 0, start_seed: int = 0) -> str:
         env_id,
         obs_mode=args.obs_mode,
         control_mode="pd_joint_pos",
+        # control_mode="pd_ee_delta_pose",
         render_mode=args.render_mode,
         reward_mode="dense" if args.reward_mode is None else args.reward_mode,
         sensor_configs=dict(shader_pack=args.shader),
