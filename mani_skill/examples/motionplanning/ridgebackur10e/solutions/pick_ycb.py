@@ -92,7 +92,7 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     # Reach
     # -------------------------------------------------------------------------- #
     grasp_pose = grasp_pose * sapien.Pose([0., 0, 0.05])
-    reach_pose = grasp_pose * sapien.Pose([0., 0, 0.10])
+    reach_pose = grasp_pose * sapien.Pose([0., 0, 0.15])
 
     meshes = ooi.get_collision_meshes()
 
@@ -118,6 +118,7 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     # plt.show()
 
     planner.move_to_pose_with_RRTConnect(reach_pose, refine_steps=20)
+    # planner.move_to_pose_with_screw(reach_pose, refine_steps=20)
 
     planner.clear_collisions()
     # -------------------------------------------------------------------------- #
@@ -125,7 +126,6 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     # -------------------------------------------------------------------------- #
     planner.move_to_pose_with_screw(grasp_pose, refine_steps=10)
     res = planner.close_gripper()
-    reach_pose.p[2] += 0.1
     planner.move_to_pose_with_screw(reach_pose, refine_steps=10)
 
     ptc_array = None
@@ -160,8 +160,8 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
 
 
     # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=True)
-    res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=False)
-    # res = planner.move_to_pose_with_screw(goal_pose)
+    # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=False)
+    res = planner.move_to_pose_with_screw(goal_pose)
     if res == -1:
         planner.close()
         return res

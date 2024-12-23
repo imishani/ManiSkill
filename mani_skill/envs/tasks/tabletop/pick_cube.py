@@ -37,7 +37,7 @@ class PickCubeEnv(BaseEnv):
     agent: Union[Panda, Fetch, RidgebackUR10e, StaticRidgebackUR10e]
     cube_half_size = 0.02
     # goal_thresh = 0.025
-    goal_thresh = 0.12
+    goal_thresh = 0.05
 
     def __init__(self, *args, robot_uids="panda", robot_init_qpos_noise=0.02, **kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise
@@ -94,6 +94,7 @@ class PickCubeEnv(BaseEnv):
             goal_xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
             goal_xyz[:, 2] = torch.rand((b)) * 0.3 + xyz[:, 2]
             self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
+
 
     def _get_obs_extra(self, info: Dict):
         # in reality some people hack is_grasped into observations by checking if the gripper can close fully or not
@@ -221,7 +222,10 @@ class PickBlockEnv(PickCubeEnv):
             qs = randomization.random_quaternions(b, lock_x=True, lock_y=True)
             self.cube.set_pose(Pose.create_from_pq(xyz, qs))
 
-            goal_xyz = torch.zeros((b, 3))
-            goal_xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
-            goal_xyz[:, 2] = torch.rand((b)) * 0.3 + xyz[:, 2]
+            # goal_xyz = torch.zeros((b, 3))
+            # goal_xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
+            # goal_xyz[:, 2] = torch.rand((b)) * 0.3 + xyz[:, 2]
+            # self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
+            goal_xyz = xyz.clone()
+            goal_xyz[:, 0] -= 0.15
             self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))

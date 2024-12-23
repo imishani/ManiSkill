@@ -915,7 +915,8 @@
     <child link="ur_arm_shoulder_link"/>
     <origin rpy="0 0 0" xyz="0 0 0.1807"/>
     <axis xyz="0 0 1"/>
-    <limit effort="330.0" lower="-6.283185307179586" upper="6.283185307179586" velocity="2.0943951023931953"/>
+<!--    <limit effort="330.0" lower="-6.283185307179586" upper="6.283185307179586" velocity="2.0943951023931953"/>-->
+    <limit effort="330.0" lower="-0.78" upper="3.8" velocity="2.0943951023931953"/>
     <dynamics damping="0" friction="0"/>
   </joint>
   <joint name="ur_arm_shoulder_lift_joint" type="revolute">
