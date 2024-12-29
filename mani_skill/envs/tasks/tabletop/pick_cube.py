@@ -173,7 +173,7 @@ class PickBlockEnv(PickCubeEnv):
             name="cube",
             initial_pose=sapien.Pose(p=[0, 0, self.cube_half_size/1.5]),
         )
-        self.cube.set_mass(self.cube.get_mass() * 0.1)
+        # self.cube.set_mass(self.cube.get_mass() * 0.1)
 
         self.goal_site = actors.build_sphere(
             self.scene,
@@ -187,7 +187,7 @@ class PickBlockEnv(PickCubeEnv):
         self._hidden_objects.append(self.goal_site)
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
-        with torch.device(self.device):
+        with (torch.device(self.device)):
             b = len(env_idx)
             self.table_scene.initialize(env_idx)
             xyz = torch.zeros((b, 3))
@@ -196,7 +196,7 @@ class PickBlockEnv(PickCubeEnv):
             y_table_center = self.table_scene.table.pose.p[:, 1]
             dim = self.table_scene.table_length, self.table_scene.table_width
 
-            noise = torch.rand(2) * 0.01 + 0.01
+            noise = (torch.rand((b, 2)) * 0.01 + 0.01).to(self.device)
 
             # we have for options for the position of the object -- 4 edges of the table with some noise
             # regions_for_sampling = [
@@ -208,14 +208,17 @@ class PickBlockEnv(PickCubeEnv):
             # region = regions_for_sampling[torch.randint(4, (b,))]
             # region = regions_for_sampling[torch.randint(3, (b,))]
 
-            region = [x_table_center - dim[0] / 2, 0]
+            region = [(x_table_center - dim[0] / 2).unsqueeze(-1),
+                      torch.zeros((b, 1), device=self.device)]
+            region = torch.cat(region, dim=-1)
 
+            idx = torch.where(region == 0)[-1].unsqueeze(-1)
+            center = torch.stack([x_table_center, y_table_center], dim=-1)
+            xyz[:, 1 - idx] = torch.gather(region, 1, 1 - idx) - torch.sign(torch.gather(region, 1, 1 - idx) -
+                                                              torch.gather(center, 1, 1 - idx)) * torch.gather(noise, 1, 1 - idx)
 
-            idx = torch.where(torch.tensor(region) == 0)[0]
-            center = (x_table_center, y_table_center)
-            xyz[:, 1 - idx] = region[1 - idx] - torch.sign(region[1 - idx] - center[1 - idx]) * noise[1 - idx]
-
-            xyz[:, idx] = center[idx] + (torch.rand((b,)) - 0.5) * dim[idx]
+            dim = torch.tensor(dim).repeat(b, 1).to(self.device)
+            xyz[:, idx] = torch.gather(center, 1, 1 - idx) + (torch.rand((b,)) - 0.5).unsqueeze(-1) * torch.gather(dim, 1, idx)
 
             xyz[:, 2] = self.cube_half_size / 1.5
 
