@@ -180,19 +180,19 @@ class TableSceneBuilder(SceneBuilder):
                 group=2, bit_idx=RIDGEBACK_WHEELS_COLLISION_BIT, bit=1
             )
         elif self.env.robot_uids == "static_ridgebackur10e":
-            qpos = np.array(
-                [0., -1.0472, -2., 0., -3.*np.pi/2., 0.,
-                 0., 0.0,
-                 0.0, 0.0, -0.0, -0.0  # Passive joints for the gripper
-                 ]
-            )
-            ###### push block #######
             # qpos = np.array(
-            #     [0., -np.pi/2., -np.pi/2., -np.pi/2., -3. * np.pi / 2., 0.,
-            #      0.8, 0.8,
-            #      0.8, 0.8, -0.8, -0.8  # Passive joints for the gripper
+            #     [0., -1.0472, -2., 0., -3.*np.pi/2., 0.,
+            #      0., 0.0,
+            #      0.0, 0.0, -0.0, -0.0  # Passive joints for the gripper
             #      ]
             # )
+            ###### push block #######
+            qpos = np.array(
+                [0., -np.pi/2., -np.pi/2., -np.pi/2., -3. * np.pi / 2., 0.,
+                 0.8, 0.8,
+                 0.8, 0.8, -0.8, -0.8  # Passive joints for the gripper
+                 ]
+            )
             #########################
             # ##### pick block #######
             # qpos = np.array(
