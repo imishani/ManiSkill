@@ -173,7 +173,7 @@ class PickBlockEnv(PickCubeEnv):
             name="cube",
             initial_pose=sapien.Pose(p=[0, 0, self.cube_half_size/1.5]),
         )
-        # self.cube.set_mass(self.cube.get_mass() * 0.1)
+        self.cube.set_mass(self.cube.get_mass() * 0.1)
 
         self.goal_site = actors.build_sphere(
             self.scene,

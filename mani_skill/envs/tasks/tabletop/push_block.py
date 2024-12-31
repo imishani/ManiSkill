@@ -98,7 +98,7 @@ class PushBlockEnv(BaseEnv):
             name="block",
             initial_pose=sapien.Pose(p=[0, 0, self.block_half_size[2]]),
         )
-        #self.obj.set_mass(self.obj.get_mass() * 0.1)
+        # self.obj.set_mass(self.obj.get_mass() * 0.1)
 
         # we also add in red/white target to visualize where we want the cube to be pushed to
         # we specify add_collisions=False as we only use this as a visual for videos and do not want it to affect the actual physics

@@ -48,6 +48,7 @@ htmlcov/
 # Itamar added- ignore all videos etc
 */img
 *.mp4
+*.gif
 *.pt
 
 *.h5

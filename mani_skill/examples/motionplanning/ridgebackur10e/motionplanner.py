@@ -208,7 +208,6 @@ class RidgebackUR10ePlanningSolver:
             return -1
 
 
-
     def move_to_pose_with_RRTConnect(
         self, pose: sapien.Pose, dry_run: bool = False, refine_steps: int = 0,
             constrain=False
