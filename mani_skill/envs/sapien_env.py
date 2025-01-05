@@ -1378,3 +1378,7 @@ class BaseEnv(gym.Env):
         print(
             "# -------------------------------------------------------------------------- #"
         )
+
+    ############## ITAMAR ################
+    def agent_reset(self, q: torch.Tensor = None):
+        self.agent.reset(q)

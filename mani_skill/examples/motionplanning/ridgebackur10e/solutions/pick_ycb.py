@@ -160,8 +160,8 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
 
 
     # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=True)
-    # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=False)
-    res = planner.move_to_pose_with_screw(goal_pose)
+    res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=False)
+    # res = planner.move_to_pose_with_screw(goal_pose)
     if res == -1:
         planner.close()
         return res

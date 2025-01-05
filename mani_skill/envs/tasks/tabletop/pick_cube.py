@@ -229,6 +229,14 @@ class PickBlockEnv(PickCubeEnv):
             # goal_xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
             # goal_xyz[:, 2] = torch.rand((b)) * 0.3 + xyz[:, 2]
             # self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
-            goal_xyz = xyz.clone()
-            goal_xyz[:, 0] -= 0.15
+
+            ####### used for data collection #######
+            # goal_xyz = xyz.clone()
+            # goal_xyz[:, 0] -= 0.15
+            # self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
+            #########################################
+
+            goal_xyz = torch.zeros((b, 3))
+            goal_xyz[:, 2] += 0.2
             self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
+

@@ -131,9 +131,8 @@ class PushBlockEnv(BaseEnv):
             # note that the table scene is built such that z=0 is the surface of the table.
             self.table_scene.initialize(env_idx)
 
-            # here we write some randomization code that randomizes the x, y position of the cube we are pushing in the range [-0.1, -0.1] to [0.1, 0.1]
+            # here we write some randomization code that randomizes the x, y position of the cube we are pushing
             xyz = torch.zeros((b, 3))
-            # xyz[..., :2] = torch.rand((b, 2)) * 0.5 - 0.25
             xyz[..., :2] = torch.rand((b, 2)) * 0.6 - 0.4
             xyz[..., 0] += self.table_scene.table.pose.p[env_idx, 0]
             xyz[..., 1] += self.table_scene.table.pose.p[env_idx, 1]
@@ -149,10 +148,12 @@ class PushBlockEnv(BaseEnv):
             obj_pose = Pose.create_from_pq(p=xyz, q=q)
             self.obj.set_pose(obj_pose)
 
-            # here we set the location of that red/white target (the goal region). In particular, we randomize the xy position of the target to be in distance range [0.1, 0.1] to [0.3, 0.3] from the cube's xy position
-            # and we further rotate 90 degrees on the y-axis to make the target object face up
+            # here we set the location of that red/white target (the goal region).
+            # In particular, we randomize the xy position of the target to be in distance range [0.1, 0.1] to [0.3, 0.3]
+            # from the cube's xy position and we further rotate 90 degrees on the
+            # y-axis to make the target object face up
             target_region_xyz = xyz
-            target_region_xyz[..., :2] += (torch.rand((b, 2)) - 0.5) * 0.5
+            target_region_xyz[..., :2] += (torch.rand((b, 2)) - 0.5) * 0.7
 
             # if target positions are outside the table, clip them to the edge
             target_region_xyz[..., 1] = torch.clamp(target_region_xyz[..., 1],
@@ -161,6 +162,9 @@ class PushBlockEnv(BaseEnv):
             target_region_xyz[..., 0] = torch.clamp(target_region_xyz[..., 0],
                                                     - (self.table_scene.table_length / 2.) + self.table_scene.table.pose.p[env_idx, 0],
                                                     (self.table_scene.table_length / 2.) + self.table_scene.table.pose.p[env_idx, 0]) # TODO: not sure that is true for batch
+
+            # ########### edge of table
+            # target_region_xyz[..., 0] = -0.5691 + 0.01*torch.randn((b,))
 
 
             # set a little bit above 0 so the target is sitting on the table

@@ -1,0 +1,53 @@
+{
+  "env_info": {
+    "env_id": "PickBlock-v1",
+    "env_kwargs": {
+      "obs_mode": "none",
+      "control_mode": "pd_joint_pos",
+      "render_mode": "rgb_array",
+      "reward_mode": "dense",
+      "sensor_configs": {
+        "shader_pack": "default"
+      },
+      "human_render_camera_configs": {
+        "shader_pack": "default"
+      },
+      "viewer_camera_configs": {
+        "shader_pack": "default"
+      },
+      "sim_backend": "auto",
+      "robot_uids": "static_ridgebackur10e"
+    },
+    "max_episode_steps": 50
+  },
+  "commit_info": {
+    "commit_id": "8c949806fdcaecdcbe694e59f205d924175b7a01",
+    "branch": "dev/imishani"
+  },
+  "episodes": [
+    {
+      "episode_id": 0,
+      "episode_seed": 0,
+      "control_mode": "pd_joint_pos",
+      "elapsed_steps": 299,
+      "reset_kwargs": {
+        "options": {},
+        "seed": 0
+      },
+      "success": false
+    },
+    {
+      "episode_id": 1,
+      "episode_seed": 1,
+      "control_mode": "pd_joint_pos",
+      "elapsed_steps": 215,
+      "reset_kwargs": {
+        "options": {},
+        "seed": 1
+      },
+      "success": false
+    }
+  ],
+  "source_type": "motionplanning",
+  "source_desc": "official motion planning solution from ManiSkill contributors"
+}
