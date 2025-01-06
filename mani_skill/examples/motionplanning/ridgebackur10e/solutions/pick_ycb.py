@@ -166,7 +166,6 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
         planner.close()
         return res
 
-    print(res)
     if res[4]['is_obj_placed']:
         res[4]['success'] = torch.tensor([True])
 

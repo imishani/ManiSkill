@@ -50,8 +50,8 @@ class PickCubeEnv(BaseEnv):
 
     @property
     def _default_human_render_camera_configs(self):
-        pose = sapien_utils.look_at([0.6, 0.7, 0.6], [0.0, 0.0, 0.35])
-        return CameraConfig("render_camera", pose, 512, 512, 1, 0.01, 100)
+        pose = sapien_utils.look_at([0.6, 1., 1.1], [-0.12, 0.0, 0.1])
+        return CameraConfig("render_camera", pose, 1280, 1280, 1, 0.01, 100)
 
     def _load_agent(self, options: dict,
                     init_pose: sapien.Pose = sapien.Pose(p=[-0.615, 0, 0])):
@@ -156,6 +156,8 @@ class PickCubeEnv(BaseEnv):
 
 @register_env("PickBlock-v1", max_episode_steps=50)
 class PickBlockEnv(PickCubeEnv):
+
+    goal_thresh = 0.12
 
     def _load_agent(self, options: dict,
                     init_pose: sapien.Pose = sapien.Pose(p=[-1.2, 0, 0])):
