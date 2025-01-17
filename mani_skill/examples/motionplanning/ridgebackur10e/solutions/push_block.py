@@ -20,12 +20,12 @@ def solve(env: PushBlockEnv, seed=None, debug=False, vis=False):
     env = env.unwrapped
     ind_env = 0  # Not parallelized on gpu
 
-    planner.close_gripper()
+    planner.control_gripper()
     push_direction = (env.goal_region.pose.sp.p - env.obj.pose.sp.p) / np.linalg.norm(env.goal_region.pose.sp.p - env.obj.pose.sp.p)
     push_direction[-1] = 0.
-    reach_pose = sapien.Pose(p=env.obj.pose.sp.p - (env.block_half_size[0] * 2.0* push_direction))
-    # a little ontop of the table
-    reach_pose = reach_pose * sapien.Pose(p=np.array([0, 0, 0.03]))
+    # reach_pose = sapien.Pose(p=env.obj.pose.sp.p - (env.block_half_size[0] * 2.0* push_direction))
+    # # a little ontop of the table
+    # reach_pose = reach_pose * sapien.Pose(p=np.array([0, 0, 0.03]))
 
     ptc_array = None
     for actor in env.scene.actors.values():
@@ -42,6 +42,12 @@ def solve(env: PushBlockEnv, seed=None, debug=False, vis=False):
                     ptc_array = np.array(ptc)
                 else:
                     ptc_array = np.concatenate([ptc_array, np.array(ptc)])
+        else:
+            aabb_size = actor.get_collision_meshes()[0].bounding_box.extents[0]
+            reach_pose = sapien.Pose(p=env.obj.pose.sp.p - (aabb_size * 0.7 * push_direction))
+            # a little ontop of the table
+            reach_pose = reach_pose * sapien.Pose(p=np.array([0, 0, 0.03]))
+
     planner.add_collision_pts(ptc_array)
 
     # planner.set_robot_pose(reach_pose)
@@ -51,7 +57,7 @@ def solve(env: PushBlockEnv, seed=None, debug=False, vis=False):
     # -------------------------------------------------------------------------- #
     # Move to goal pose
     # -------------------------------------------------------------------------- #
-    goal_pose = sapien.Pose(p=env.goal_region.pose.sp.p - (env.block_half_size[0] * 1. * push_direction))
+    goal_pose = sapien.Pose(p=env.goal_region.pose.sp.p - (aabb_size * 0.5 * push_direction))
     goal_pose.set_p(np.array([*goal_pose.get_p()[:2], reach_pose.p[2]]))
     res = planner.move_to_pose_with_screw(goal_pose)
 

@@ -10,7 +10,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 from mani_skill.envs.tasks import PickSingleKitchenYCBEnv, PickHeavyClutterYCBEnv, PickCubeEnv, PickBlockEnv
 from mani_skill.examples.motionplanning.ridgebackur10e.motionplanner import \
-    RidgebackUR10ePlanningSolver
+    RidgebackUR10ePlanningSolver, CLOSED, OPEN
 from mani_skill.examples.motionplanning.panda.utils import (
     compute_grasp_info_by_obb, get_actor_obb)
 from mani_skill.utils.common import quat_diff_rad
@@ -124,8 +124,9 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     # -------------------------------------------------------------------------- #
     # Grasp
     # -------------------------------------------------------------------------- #
-    planner.move_to_pose_with_screw(grasp_pose, refine_steps=10)
-    res = planner.close_gripper()
+    planner.move_to_pose_with_screw(grasp_pose, refine_steps=0)
+    res = planner.control_gripper()
+    reach_pose = reach_pose * sapien.Pose(p=[0, 0, 0.1])
     planner.move_to_pose_with_screw(reach_pose, refine_steps=10)
 
     ptc_array = None
@@ -148,7 +149,11 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     ooi_relative_pose = ooi.pose.inv() * planner.robot.get_links()[-1].pose
     mplib_rel_pose = mplib.Pose(ooi_relative_pose.p.squeeze().cpu().numpy(),
                                 ooi_relative_pose.q.squeeze().cpu().numpy())
-    planner.planner.update_attached_box(size=2*ooi._bodies[0].collision_shapes[0].half_size,
+    planner.planner.update_attached_box(size=(2*0.1, 2*0.1, 0.04),
+    # planner.planner.update_attached_box(size=2*ooi._bodies[0].collision_shapes[0].half_size,
+    # planner.planner.update_attached_box(size=(2*ooi._bodies[0].collision_shapes[0].radius,
+    #                                           2*ooi._bodies[0].collision_shapes[0].radius,
+    #                                           2*ooi._bodies[0].collision_shapes[0].half_length),
                                         pose=mplib_rel_pose)
 
 
@@ -156,7 +161,8 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     # -------------------------------------------------------------------------- #
     # Move to goal pose
     # -------------------------------------------------------------------------- #
-    goal_pose = sapien.Pose(env.goal_site.pose.sp.p, reach_pose.q)
+    # goal_pose = sapien.Pose(env.goal_site.pose.sp.p, reach_pose.q)
+    goal_pose = sapien.Pose(env.goal_site.pose.sp.p)
 
 
     # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=True)
@@ -168,6 +174,8 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
 
     if res[4]['is_obj_placed']:
         res[4]['success'] = torch.tensor([True])
+
+    planner.control_gripper(gripper_state=OPEN)
 
     planner.close()
     return res

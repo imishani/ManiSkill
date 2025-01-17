@@ -485,7 +485,7 @@ class RidgebackUR10ePlanningSolver:
                 self.base_env.render_human()
         return obs, reward, terminated, truncated, info
 
-    def close_gripper(self, t=6, gripper_state = CLOSED):
+    def control_gripper(self, t=6, gripper_state = CLOSED):
         self.gripper_state = gripper_state
         # self.render_wait()
         qpos = self.robot.get_qpos()[0, :-6].cpu().numpy()

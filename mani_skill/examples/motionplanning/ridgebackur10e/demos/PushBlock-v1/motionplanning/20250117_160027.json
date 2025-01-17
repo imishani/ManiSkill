@@ -1,6 +1,6 @@
 {
   "env_info": {
-    "env_id": "PickBlock-v1",
+    "env_id": "PushBlock-v1",
     "env_kwargs": {
       "obs_mode": "none",
       "control_mode": "pd_joint_pos",
@@ -21,7 +21,7 @@
     "max_episode_steps": 50
   },
   "commit_info": {
-    "commit_id": "8c949806fdcaecdcbe694e59f205d924175b7a01",
+    "commit_id": "3ae86935cdba8457f50a16b29d2e7503758edabc",
     "branch": "dev/imishani"
   },
   "episodes": [
@@ -29,23 +29,12 @@
       "episode_id": 0,
       "episode_seed": 0,
       "control_mode": "pd_joint_pos",
-      "elapsed_steps": 299,
+      "elapsed_steps": 63,
       "reset_kwargs": {
         "options": {},
         "seed": 0
       },
-      "success": false
-    },
-    {
-      "episode_id": 1,
-      "episode_seed": 1,
-      "control_mode": "pd_joint_pos",
-      "elapsed_steps": 215,
-      "reset_kwargs": {
-        "options": {},
-        "seed": 1
-      },
-      "success": false
+      "success": true
     }
   ],
   "source_type": "motionplanning",
