@@ -178,7 +178,7 @@ class PickBlockEnv(PickCubeEnv):
         'spoon',
     ]
 
-    def __init__(self, additional_objs=True, *args, **kwargs):
+    def __init__(self, additional_objs=False, *args, **kwargs):
         self.all_model_ids = np.array(
             list(
                 load_json(ASSET_DIR / "assets/mani_skill2_ycb/info_pick_v0.json").keys()
@@ -217,7 +217,8 @@ class PickBlockEnv(PickCubeEnv):
             self.scene,
             id=f"ycb:029_plate",
         )
-        builder.initial_pose = sapien.Pose(p=[0, 0, self.cube_half_size * 0.5 * 1.8 + 1e-3])
+        # builder.initial_pose = sapien.Pose(p=[0, 0, self.cube_half_size * 0.5 * 1.8 + 1e-3])
+        builder.initial_pose = sapien.Pose(p=[0, 0, -0.0123])
 
         self.cube = builder.build(name=f"cube")
 
@@ -283,6 +284,7 @@ class PickBlockEnv(PickCubeEnv):
                                       add_visual=True)
 
             builder.initial_pose = sapien.Pose(p=[0, 0, 0])
+            builder.set_physx_body_type("static")
             builder.set_scene_idxs([i])
             self._objs.append(builder.build(name=f"{model_id}-{i}"))
             self.remove_from_state_dict_registry(self._objs[-1])
@@ -337,9 +339,10 @@ class PickBlockEnv(PickCubeEnv):
             dim = torch.tensor(dim).repeat(b, 1).to(self.device)
             xyz[:, idx] = torch.gather(center, 1, 1 - idx) + (torch.rand((b,)) - 0.5).unsqueeze(-1) * torch.gather(dim, 1, idx)
 
+            xyz[:, 0] += 0.02
             # xyz[..., 2] = self.cube_half_size * 0.5 * 1.8 + 1e-3
             # xyz[:, 2] = self.cube_half_size
-            xyz[:, 2] = self.cube_z
+            xyz[:, 2] = self.cube_z / 2.0 + 1e-3
 
             qs = randomization.random_quaternions(b, lock_x=True, lock_y=True)
             # qs = euler2quat(0., np.pi/2., 0)
@@ -362,17 +365,16 @@ class PickBlockEnv(PickCubeEnv):
             # goal_xyz[:, 2] += 0.2
             # self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
             self.goal_site.set_pose(
-                Pose.create_from_pq(p=torch.tensor([-1.2, -0.8, -self.table_scene.table_height + 0.4])))
+                Pose.create_from_pq(p=torch.tensor([-1.2, -0.8, -self.table_scene.table_height + 0.5])))
 
             if not self.additional_objs:
                 return
-            xyz[:, :2] = torch.rand((b, 2)) * torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) + self.table_scene.table.pose.p[:, :2] - torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) / 2
+            # xyz[:, :2] = torch.rand((b, 2)) * torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) + self.table_scene.table.pose.p[:, :2] - torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) / 2
+            xyz = torch.zeros((b, 3))
+            xyz[..., :2] = torch.tensor([-0.35, -0.2]).repeat(b, 1).to(self.device)
             xyz[:, 2] = self.object_zs[env_idx]
             qs = randomization.random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=xyz, q=qs))
-
-
-
 
 
     def evaluate(self):

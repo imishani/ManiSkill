@@ -21,6 +21,7 @@ import open3d as o3d
 
 
 OPEN = 0
+HALF_CLOSED=0.4
 CLOSED = 0.8
 
 class RidgebackUR10ePlanningSolver:
