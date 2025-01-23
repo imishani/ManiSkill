@@ -365,7 +365,7 @@ class PickBlockEnv(PickCubeEnv):
             # goal_xyz[:, 2] += 0.2
             # self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
             self.goal_site.set_pose(
-                Pose.create_from_pq(p=torch.tensor([-1.2, -0.8, -self.table_scene.table_height + 0.5])))
+                Pose.create_from_pq(p=torch.tensor([-1.2, -0.8, -self.table_scene.table_height + 0.7])))
 
             if not self.additional_objs:
                 return
