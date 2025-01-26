@@ -30,16 +30,15 @@ kitchen_keywords = [
 YCB_ASSETS_DIR = ASSET_DIR / "assets/mani_skill2_ycb/models"
 
 TABLE_POSE = {
-    "position": [-0.12, 0, -(0.9196429 * 1.5 / 1.75)],
+    "position": [-0.12, 0, -0.6306],
     "rotation": euler2quat(0, 0, np.pi / 2).tolist()
 }
 
 ycb_dataset = {}
-
 class ItemPlacer:
     def __init__(self,
                  items,
-                 table_dimensions : tuple[float, float, float] = (2.0724673, 1.0363512, 0.78826535),
+                 table_dimensions : tuple[float, float, float] = (1.6579739, 0.829081, 0.6306),
                  ):
         """
         Initialize item placer with table dimensions and tracking.
@@ -151,12 +150,12 @@ class ItemPlacer:
             # TODO: consider item size and orientation for better placement (e.g., x is not based only on item width,
 
             x = random.uniform(
-                -self.table_width/2 + (item_aabb['max'][0] - item_aabb['min'][0])/2 + 0.15,
-                self.table_width/2 - (item_aabb['max'][0] - item_aabb['min'][0])/2 - 0.15
+                -self.table_width/2 + (item_aabb['max'][0] - item_aabb['min'][0]) + TABLE_POSE["position"][0] + 0.015,
+                self.table_width/2 - (item_aabb['max'][0] - item_aabb['min'][0])  + TABLE_POSE["position"][0] - 0.015
             )
             y = random.uniform(
-                -self.table_depth/2 + (item_aabb['max'][1] - item_aabb['min'][1])/2 + 0.1,
-                self.table_depth/2 - (item_aabb['max'][1] - item_aabb['min'][1])/2 - 0.1
+                -self.table_depth/2 + (item_aabb['max'][1] - item_aabb['min'][1]) + TABLE_POSE["position"][1] + 0.015,
+                self.table_depth/2 - (item_aabb['max'][1] - item_aabb['min'][1]) - TABLE_POSE["position"][1] - 0.015
             )
 
             yaw = random.uniform(0, 2*np.pi)
@@ -200,8 +199,8 @@ def visualize_scene(scene, save_path=None):
     plt.figure(figsize=(10, 8))
 
     # Plot table
-    table_width = 2.0724673
-    table_depth = 1.0363512
+    table_width = 1.6579739
+    table_depth = 0.829081
     plt.gca().add_patch(Rectangle(
         (TABLE_POSE['position'][0] - table_width/2, TABLE_POSE['position'][1] - table_depth/2),
         table_width, table_depth,
@@ -293,9 +292,13 @@ def generate_kitchen_item_scenes(max_scenes=10, min_items=10, max_items=15):
     new_scenes = []
 
     # Generate permutations
-    for r in range(min_items, max_items + 1):
+    # for r in range(min_items, max_items + 1):
+    for r in range(10):
         # get random r items
-        perm = np.random.choice(list(kitchen_ycb_dirs.keys()), r, replace=False)
+        # perm = np.random.choice(list(kitchen_ycb_dirs.keys()), r, replace=False)
+        perm = np.random.choice(list(kitchen_ycb_dirs.keys()), 3, replace=False)
+        perm = perm.tolist()
+        perm.append("029_plate")
         # for perm in itertools.permutations(kitchen_ycb_dirs.keys(), r):
             # Reset item placer for each scene
         item_placer = ItemPlacer(kitchen_ycb_dirs)
@@ -339,8 +342,8 @@ def main(output_file='kitchen_item_permutations.json'):
     Main function to generate kitchen item permutation scenes.
     """
     # Seed for reproducibility
-    random.seed(30)
-    np.random.seed(30)
+    random.seed(29)
+    np.random.seed(29)
 
     # Load YCB dataset
     global ycb_dataset

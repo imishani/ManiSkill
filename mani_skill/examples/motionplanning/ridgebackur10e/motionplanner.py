@@ -21,6 +21,7 @@ import open3d as o3d
 
 
 OPEN = 0
+HALF_CLOSED=0.4
 CLOSED = 0.8
 
 class RidgebackUR10ePlanningSolver:
@@ -206,7 +207,6 @@ class RidgebackUR10ePlanningSolver:
         else:
             print("IK failed")
             return -1
-
 
 
     def move_to_pose_with_RRTConnect(
@@ -486,7 +486,7 @@ class RidgebackUR10ePlanningSolver:
                 self.base_env.render_human()
         return obs, reward, terminated, truncated, info
 
-    def close_gripper(self, t=6, gripper_state = CLOSED):
+    def control_gripper(self, t=6, gripper_state = CLOSED):
         self.gripper_state = gripper_state
         # self.render_wait()
         qpos = self.robot.get_qpos()[0, :-6].cpu().numpy()

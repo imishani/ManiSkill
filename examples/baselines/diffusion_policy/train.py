@@ -41,13 +41,13 @@ class Args:
     """if toggled, `torch.backends.cudnn.deterministic=False`"""
     cuda: bool = True
     """if toggled, cuda will be enabled by default"""
-    track: bool = False
+    track: bool = True
     """if toggled, this experiment will be tracked with Weights and Biases"""
     wandb_project_name: str = "ManiSkill"
     """the wandb's project name"""
     wandb_entity: Optional[str] = None
     """the entity (team) of wandb's project"""
-    capture_video: bool = True
+    capture_video: bool = False
     """whether to capture videos of the agent performances (check out `videos` folder)"""
 
     env_id: str = "PegInsertionSide-v0"
@@ -69,6 +69,7 @@ class Args:
     pred_horizon: int = 16 # 16->8 leads to worse performance, maybe it is like generate a half image; 16->32, improvement is very marginal
     diffusion_step_embed_dim: int = 64 # not very important
     unet_dims: List[int] = field(default_factory=lambda: [64, 128, 256]) # default setting is about ~4.5M params
+    # unet_dims: List[int] = field(default_factory=lambda: [128, 256, 512]) # default setting is about ~4.5M params
     n_groups: int = 8 # jigu says it is better to let each group have at least 8 channels; it seems 4 and 8 are simila
 
     # Environment/experiment specific arguments
@@ -305,7 +306,7 @@ if __name__ == "__main__":
     if args.track:
         import wandb
         config = vars(args)
-        config["eval_env_cfg"] = dict(**env_kwargs, num_envs=args.num_eval_envs, env_id=args.env_id, env_horizon=gym_utils.find_max_episode_steps_value(envs))
+        config["eval_env_cfg"] = dict(**env_kwargs, num_envs=args.num_eval_envs, env_id=args.env_id)#, env_horizon=gym_utils.find_max_episode_steps_value(envs))
         wandb.init(
             project=args.wandb_project_name,
             entity=args.wandb_entity,

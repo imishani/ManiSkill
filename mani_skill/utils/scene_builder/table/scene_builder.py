@@ -52,7 +52,10 @@ class TableSceneBuilder(SceneBuilder):
         if self.scene.parallel_in_single_scene:
             floor_width = 500
         self.ground = build_ground(
-            self.scene, floor_width=floor_width, altitude=-self.table_height
+            self.scene, floor_width=floor_width, altitude=-self.table_height,
+            # texture_file=osp.join(osp.dirname(__file__), "assets/floor_tiles_06_diff_2k_aligned.png")
+            # texture_file="/home/imishani/work/code/ManiSkill/mani_skill/utils/building/assets/floor_tiles_06_diff_2k_aligned.png"
+            texture_file="/home/imishani/work/code/algorithms/manipulation-planning-private/scripts/planning/tests/demos/planner/motionplanning/wood_floor"
         )
         self.table = table
         self.scene_objects: List[sapien.Entity] = [self.table, self.ground]
@@ -180,19 +183,19 @@ class TableSceneBuilder(SceneBuilder):
                 group=2, bit_idx=RIDGEBACK_WHEELS_COLLISION_BIT, bit=1
             )
         elif self.env.robot_uids == "static_ridgebackur10e":
+            # qpos = np.array(
+            #     [0., -1.0472, -2., 0., -3.*np.pi/2., 0.,
+            #      0., 0.0,
+            #      0.0, 0.0, -0.0, -0.0  # Passive joints for the gripper
+            #      ]
+            # )
+            ###### push block #######
             qpos = np.array(
-                [0., -1.0472, -2., 0., -3.*np.pi/2., 0.,
+                [0., -np.pi/2., -np.pi/2., -np.pi/2., -3. * np.pi / 2., 0.,
                  0.8, 0.8,
                  0.8, 0.8, -0.8, -0.8  # Passive joints for the gripper
                  ]
             )
-            ###### push block #######
-            # qpos = np.array(
-            #     [0., -np.pi/2., -np.pi/2., -np.pi/2., -3. * np.pi / 2., 0.,
-            #      0.8, 0.8,
-            #      0.8, 0.8, -0.8, -0.8  # Passive joints for the gripper
-            #      ]
-            # )
             #########################
             # ##### pick block #######
             # qpos = np.array(

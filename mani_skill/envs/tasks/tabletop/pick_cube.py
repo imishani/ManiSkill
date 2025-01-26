@@ -1,19 +1,26 @@
-from typing import Any, Dict, Union
+from typing import Any, Dict, Union, List
 
 import numpy as np
 import sapien
 import torch
+from transforms3d.euler import euler2quat
 
 import mani_skill.envs.utils.randomization as randomization
 from mani_skill.agents.robots import Fetch, Panda, RidgebackUR10e, StaticRidgebackUR10e
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
-from mani_skill.utils import sapien_utils
+from mani_skill.utils import sapien_utils, common
 from mani_skill.utils.building import actors
 from mani_skill.utils.registration import register_env
 from mani_skill.utils.scene_builder.table import TableSceneBuilder
 from mani_skill.utils.structs.pose import Pose
 from mani_skill.utils.structs.types import SimConfig
+from mani_skill.utils.io_utils import load_json
+
+from mani_skill.utils.structs.actor import Actor
+from mani_skill.utils.building.actors.ycb import get_ycb_builder
+
+from mani_skill import ASSET_DIR
 
 
 @register_env("PickCube-v1", max_episode_steps=50)
@@ -39,7 +46,7 @@ class PickCubeEnv(BaseEnv):
     # goal_thresh = 0.025
     goal_thresh = 0.05
 
-    def __init__(self, *args, robot_uids="panda", robot_init_qpos_noise=0.02, **kwargs):
+    def __init__(self, *args, robot_uids="static_ridgebackur10e", robot_init_qpos_noise=0.02, **kwargs):
         self.robot_init_qpos_noise = robot_init_qpos_noise
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
@@ -50,8 +57,8 @@ class PickCubeEnv(BaseEnv):
 
     @property
     def _default_human_render_camera_configs(self):
-        pose = sapien_utils.look_at([0.6, 0.7, 0.6], [0.0, 0.0, 0.35])
-        return CameraConfig("render_camera", pose, 512, 512, 1, 0.01, 100)
+        pose = sapien_utils.look_at([0.6, 1., 1.1], [-0.12, 0.0, 0.1])
+        return CameraConfig("render_camera", pose, 1280, 1280, 1, 0.01, 100)
 
     def _load_agent(self, options: dict,
                     init_pose: sapien.Pose = sapien.Pose(p=[-0.615, 0, 0])):
@@ -154,8 +161,40 @@ class PickCubeEnv(BaseEnv):
     ):
         return self.compute_dense_reward(obs=obs, action=action, info=info) / 5
 
-@register_env("PickBlock-v1", max_episode_steps=50)
+@register_env("PickBlock-v1", max_episode_steps=50, asset_download_ids=["ycb"])
 class PickBlockEnv(PickCubeEnv):
+
+    goal_thresh = 0.15
+
+    kitchen_keywords = [
+        'pitcher',
+        'mug',
+        'cup',
+        'plate',
+        'bowl',
+        'spatula',
+        'knife',
+        'fork',
+        'spoon',
+    ]
+
+    def __init__(self, additional_objs=False, *args, **kwargs):
+        self.all_model_ids = np.array(
+            list(
+                load_json(ASSET_DIR / "assets/mani_skill2_ycb/info_pick_v0.json").keys()
+            )
+        )
+        self.additional_objs = additional_objs
+        super().__init__(*args, **kwargs)
+
+    @property
+    def _default_human_render_camera_configs(self):
+        # pose = sapien_utils.look_at([0.6, 1., 1.1], [-0.12, 0.0, 0.1])
+        # return CameraConfig("render_camera", pose, 1280, 1280, 1, 0.01, 100)
+        pose = sapien_utils.look_at(eye=[1., 0, 1.8], target=[-0.12, 0, 0.1])
+        return CameraConfig(
+            "render_camera", pose=pose, width=2560, height=2560, fov=1, near=0.01, far=100
+        )
 
     def _load_agent(self, options: dict,
                     init_pose: sapien.Pose = sapien.Pose(p=[-1.2, 0, 0])):
@@ -165,29 +204,138 @@ class PickBlockEnv(PickCubeEnv):
         self.table_scene = TableSceneBuilder(
             self, robot_init_qpos_noise=self.robot_init_qpos_noise
         )
-        self.table_scene.build(scale=1.3)
-        self.cube = actors.build_box(
+        self.table_scene.build(scale=1.2)
+        # self.cube = actors.build_box(
+        #     self.scene,
+        #     half_sizes=(self.cube_half_size*4, self.cube_half_size*4, self.cube_half_size/1.5),
+        #     color=[1, 0, 0, 1],
+        #     name="cube",
+        #     initial_pose=sapien.Pose(p=[0, 0, self.cube_half_size/1.5]),
+        # )
+        # self.cube = actors.build_cylinder(
+        #     self.scene,
+        #     radius=self.cube_half_size * 6,
+        #     half_length=self.cube_half_size / 1.5,
+        #     color=[1, 0, 0, 1],
+        #     name="cube",
+        #     initial_pose=sapien.Pose(p=[0, 0, self.cube_half_size / 1.5]),
+        # )
+
+        builder = actors.get_actor_builder(
             self.scene,
-            half_sizes=(self.cube_half_size*4, self.cube_half_size*4, self.cube_half_size/1.5),
-            color=[1, 0, 0, 1],
-            name="cube",
-            initial_pose=sapien.Pose(p=[0, 0, self.cube_half_size/1.5]),
+            id=f"ycb:029_plate",
         )
+        # builder.initial_pose = sapien.Pose(p=[0, 0, self.cube_half_size * 0.5 * 1.8 + 1e-3])
+        builder.initial_pose = sapien.Pose(p=[0, 0, -0.0123])
+
+        self.cube = builder.build(name=f"cube")
+
         self.cube.set_mass(self.cube.get_mass() * 0.1)
+
+        builder = self.scene.create_actor_builder()
+        q = euler2quat(np.pi/2., 0, 0)
+
+        builder.add_nonconvex_collision_from_file(
+            filename="/home/imishani/crate.obj",
+            scale=[1.5, 1.5, 1.5]
+        )
+
+        builder.add_visual_from_file(filename="/home/imishani/crate.glb",
+                                     scale=[1.5, 1.5, 1.5])
+
+        builder.initial_pose = sapien.Pose(p=[-1.2, -0.8, -self.table_scene.table_height + 1e-3], q=q)
+        self.crate = builder.build_kinematic(name="crate")
+        # self.crate.set_pose(sapien.Pose(p=[-1.2, -1., 0.0], q=q))
 
         self.goal_site = actors.build_sphere(
             self.scene,
             radius=self.goal_thresh,
-            color=[0, 1, 0, 0.2],
+            color=[0, 1, 0, 0.0],
             name="goal_site",
             body_type="kinematic",
             add_collision=False,
             initial_pose=sapien.Pose(),
         )
+        self.goal_site.set_pose(Pose.create_from_pq(p=torch.tensor([-1.2, -0.8, -self.table_scene.table_height + 0.5])))
         self._hidden_objects.append(self.goal_site)
 
+        if not self.additional_objs:
+            return
+
+        # kitchen_model_ids = [
+        #     model_id for model_id in self.all_model_ids if any(keyword in model_id for keyword in self.kitchen_keywords)
+        # ]
+        #
+        # # randomize the list of all possible models in the YCB dataset
+        # # then sub-scene i will load model model_ids[i % number_of_ycb_objects]
+        # model_ids = self._batched_episode_rng.choice(kitchen_model_ids, replace=True)
+        # # if (
+        # #         self.num_envs > 1
+        # #         and self.num_envs < len(self.kitchen_model_ids)
+        # #         and self.reconfiguration_freq <= 0
+        # #         and not WARNED_ONCE
+        # # ):
+        # #     WARNED_ONCE = True
+        # #     print(
+        # #         """There are less parallel environments than total available models to sample.
+        # #         Not all models will be used during interaction even after resets unless you call env.reset(options=dict(reconfigure=True))
+        # #         or set reconfiguration_freq to be >= 1."""
+        # #     )
+        # self.model_id = model_ids[0]
+        # self._objs: List[Actor] = []
+        # self.obj_heights = []
+        # for i, model_id in enumerate(model_ids):
+        #     # TODO: before official release we will finalize a metadata dataclass that these build functions should return.
+        #     builder = get_ycb_builder(self.scene,
+        #                               id=model_id,
+        #                               add_collision=True,
+        #                               add_visual=True)
+        #
+        #     builder.initial_pose = sapien.Pose(p=[0, 0, 0])
+        #     builder.set_physx_body_type("static")
+        #     builder.set_scene_idxs([i])
+        #     self._objs.append(builder.build(name=f"{model_id}-{i}"))
+        #     self.remove_from_state_dict_registry(self._objs[-1])
+        # self.obj = Actor.merge(self._objs, name="ycb_objects")
+        # # self.add_to_state_dict_registry(self.obj)
+
+        self._objs: List[Actor] = []
+        self.obj_heights = []
+
+        import pickle
+        with open("/home/imishani/work/code/algorithms/manipulation-planning-private/scripts/planning/tests/data/static-obs/scene.pkl", "rb") as f:
+            objects = pickle.load(f)
+        for object_key in objects.keys():
+            builder = get_ycb_builder(self.scene,
+                                      id=object_key,
+                                      add_collision=True,
+                                      add_visual=True)
+            pose = objects[object_key]
+            builder.initial_pose = sapien.Pose(p=pose[:3],
+                                               q=pose[3:])
+            builder.set_physx_body_type("static")
+            builder.set_scene_idxs([0]) # TODO: all these indecies are not good and gpu wil not work!
+            self._objs.append(builder.build(name=f"{object_key}-{0}"))
+            self.remove_from_state_dict_registry(self._objs[-1])
+
+
+
+    def _after_reconfigure(self, options: dict):
+        collision_mesh = self.cube.get_first_collision_mesh()
+        self.cube_z = -collision_mesh.bounding_box.bounds[0, 2]
+        if not self.additional_objs:
+            return
+        self.object_zs = []
+        self.object_meshes = []
+        for obj in self._objs:
+            collision_mesh = obj.get_first_collision_mesh()
+            # this value is used to set object pose so the bottom is at z=0
+            self.object_zs.append(-collision_mesh.bounding_box.bounds[0, 2])
+            self.object_meshes.append(collision_mesh)
+        self.object_zs = common.to_tensor(self.object_zs, device=self.device)
+
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
-        with torch.device(self.device):
+        with (torch.device(self.device)):
             b = len(env_idx)
             self.table_scene.initialize(env_idx)
             xyz = torch.zeros((b, 3))
@@ -196,7 +344,7 @@ class PickBlockEnv(PickCubeEnv):
             y_table_center = self.table_scene.table.pose.p[:, 1]
             dim = self.table_scene.table_length, self.table_scene.table_width
 
-            noise = torch.rand(2) * 0.01 + 0.01
+            noise = (torch.rand((b, 2)) * 0.01 + 0.01).to(self.device)
 
             # we have for options for the position of the object -- 4 edges of the table with some noise
             # regions_for_sampling = [
@@ -208,24 +356,68 @@ class PickBlockEnv(PickCubeEnv):
             # region = regions_for_sampling[torch.randint(4, (b,))]
             # region = regions_for_sampling[torch.randint(3, (b,))]
 
-            region = [x_table_center - dim[0] / 2, 0]
+            region = [(x_table_center - dim[0] / 2).unsqueeze(-1),
+                      torch.zeros((b, 1), device=self.device)]
+            region = torch.cat(region, dim=-1)
 
+            idx = torch.where(region == 0)[-1].unsqueeze(-1)
+            center = torch.stack([x_table_center, y_table_center], dim=-1)
+            xyz[:, 1 - idx] = torch.gather(region, 1, 1 - idx) - torch.sign(torch.gather(region, 1, 1 - idx) -
+                                                              torch.gather(center, 1, 1 - idx)) * torch.gather(noise, 1, 1 - idx)
 
-            idx = torch.where(torch.tensor(region) == 0)[0]
-            center = (x_table_center, y_table_center)
-            xyz[:, 1 - idx] = region[1 - idx] - torch.sign(region[1 - idx] - center[1 - idx]) * noise[1 - idx]
+            dim = torch.tensor(dim).repeat(b, 1).to(self.device)
+            xyz[:, idx] = torch.gather(center, 1, 1 - idx) + (torch.rand((b,)) - 0.5).unsqueeze(-1) * torch.gather(dim, 1, idx)
 
-            xyz[:, idx] = center[idx] + (torch.rand((b,)) - 0.5) * dim[idx]
-
-            xyz[:, 2] = self.cube_half_size / 1.5
+            xyz[:, 0] += 0.02
+            # xyz[..., 2] = self.cube_half_size * 0.5 * 1.8 + 1e-3
+            # xyz[:, 2] = self.cube_half_size
+            xyz[:, 2] = self.cube_z / 2.0 + 1e-3
 
             qs = randomization.random_quaternions(b, lock_x=True, lock_y=True)
+            # qs = euler2quat(0., np.pi/2., 0)
+            # qs = torch.tensor(qs).repeat(b, 1).to(self.device)
+            # rotate the object 90 deg around x
             self.cube.set_pose(Pose.create_from_pq(xyz, qs))
 
             # goal_xyz = torch.zeros((b, 3))
             # goal_xyz[:, :2] = torch.rand((b, 2)) * 0.2 - 0.1
             # goal_xyz[:, 2] = torch.rand((b)) * 0.3 + xyz[:, 2]
             # self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
-            goal_xyz = xyz.clone()
-            goal_xyz[:, 0] -= 0.15
-            self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
+
+            ####### used for data collection #######
+            # goal_xyz = xyz.clone()
+            # goal_xyz[:, 0] -= 0.15
+            # self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
+            #########################################
+
+            # goal_xyz = torch.zeros((b, 3))
+            # goal_xyz[:, 2] += 0.2
+            # self.goal_site.set_pose(Pose.create_from_pq(goal_xyz))
+            self.goal_site.set_pose(
+                Pose.create_from_pq(p=torch.tensor([-1.2, -0.8, -self.table_scene.table_height + 0.7])))
+
+            if not self.additional_objs:
+                return
+            # # xyz[:, :2] = torch.rand((b, 2)) * torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) + self.table_scene.table.pose.p[:, :2] - torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) / 2
+            # xyz = torch.zeros((b, 3))
+            # xyz[..., :2] = torch.tensor([-0.35, -0.2]).repeat(b, 1).to(self.device)
+            # xyz[:, 2] = self.object_zs[env_idx]
+            # qs = randomization.random_quaternions(b, lock_x=True, lock_y=True, lock_z=True)
+            # self.obj.set_pose(Pose.create_from_pq(p=xyz, q=qs))
+
+
+    def evaluate(self):
+        is_obj_placed = (
+                torch.linalg.norm(self.goal_site.pose.p[:, :2] - self.cube.pose.p[:, :2], axis=1)
+                <= self.goal_thresh
+        )
+        is_grasped = self.agent.is_grasping(self.cube)
+        is_robot_static = self.agent.is_static(0.2)
+        return {
+            "success": is_obj_placed,
+            "is_obj_placed": is_obj_placed,
+            "is_robot_static": is_robot_static,
+            "is_grasped": is_grasped,
+        }
+
+

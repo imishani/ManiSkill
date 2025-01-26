@@ -593,8 +593,8 @@ class StaticRidgebackUR10e(BaseAgent):
             joint_names=self.arm_joint_names,
             pos_lower=-0.1,
             pos_upper=0.1,
-            stiffness=self.arm_stiffness,
-            damping=self.arm_damping,
+            stiffness=self.arm_stiffness*10,
+            damping=self.arm_damping*10,
             force_limit=self.arm_force_limit,
             ee_link=self.ee_link_name,
             urdf_path=self.urdf_path,
@@ -605,11 +605,11 @@ class StaticRidgebackUR10e(BaseAgent):
             pos_upper=0.1,
             rot_lower=-0.1,
             rot_upper=0.1,
-            stiffness=self.arm_stiffness,
-            damping=self.arm_damping,
+            stiffness=self.arm_stiffness*10,
+            damping=self.arm_damping*10,
             force_limit=self.arm_force_limit,
             ee_link=self.ee_link_name,
-            urdf_path=self.urdf_path,
+            urdf_path=self.urdf_path
         )
 
         arm_pd_ee_pose = PDEEPoseControllerConfig(
@@ -693,16 +693,17 @@ class StaticRidgebackUR10e(BaseAgent):
             friction=0.05,
             normalize_action=False,
         )
+
         finger_mimic_pd_joint_delta_pos = PDJointPosMimicControllerConfig(
             joint_names=finger_joint_names,
-            lower=-0.1,
-            upper=0.1,
-            stiffness=1e3,
+            lower=0.0,
+            upper=0.8,
+            stiffness=1e5,
             damping=1e3,
             force_limit=0.1,
             normalize_action=True,
             friction=0.05,
-            use_delta=True,
+            use_delta=False,
         )
 
         controller_configs = dict(
@@ -729,7 +730,8 @@ class StaticRidgebackUR10e(BaseAgent):
             ),
             pd_ee_delta_pose=dict(
                 arm=arm_pd_ee_delta_pose,
-                finger=finger_mimic_pd_joint_pos,
+                # finger=finger_mimic_pd_joint_pos,
+                finger=finger_mimic_pd_joint_delta_pos,
                 passive_finger_joints=passive_finger_joints,
                 # gripper=gripper_pd_joint_pos,
 #                 body=body_pd_joint_delta_pos,
