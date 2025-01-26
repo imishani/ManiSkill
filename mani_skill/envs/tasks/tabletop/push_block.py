@@ -62,7 +62,7 @@ class PushBlockEnv(BaseEnv):
 
     def __init__(self, *args, robot_uids="static_ridgebackur10e",
                  robot_init_qpos_noise=0.02,
-                 additional_objs=False,
+                 additional_objs=True,
                  **kwargs):
         # specifying robot_uids="panda" as the default means gym.make("PushCube-v1") will default to using the panda arm.
         self.robot_init_qpos_noise = robot_init_qpos_noise
@@ -171,43 +171,64 @@ class PushBlockEnv(BaseEnv):
         if not self.additional_objs:
             return
 
-        kitchen_model_ids = [
-            model_id for model_id in self.all_model_ids if any(keyword in model_id for keyword in self.kitchen_keywords)
-        ]
+        # kitchen_model_ids = [
+        #     model_id for model_id in self.all_model_ids if any(keyword in model_id for keyword in self.kitchen_keywords)
+        # ]
+        #
+        # # randomize the list of all possible models in the YCB dataset
+        # # then sub-scene i will load model model_ids[i % number_of_ycb_objects]
+        # model_ids = self._batched_episode_rng.choice(kitchen_model_ids, replace=True)
+        # # if (
+        # #         self.num_envs > 1
+        # #         and self.num_envs < len(self.kitchen_model_ids)
+        # #         and self.reconfiguration_freq <= 0
+        # #         and not WARNED_ONCE
+        # # ):
+        # #     WARNED_ONCE = True
+        # #     print(
+        # #         """There are less parallel environments than total available models to sample.
+        # #         Not all models will be used during interaction even after resets unless you call env.reset(options=dict(reconfigure=True))
+        # #         or set reconfiguration_freq to be >= 1."""
+        # #     )
+        # self.model_id = model_ids[0]
+        # self._objs: List[Actor] = []
+        # self.obj_heights = []
+        # for i, model_id in enumerate(model_ids):
+        #     # TODO: before official release we will finalize a metadata dataclass that these build functions should return.
+        #     builder = get_ycb_builder(self.scene,
+        #                               id=model_id,
+        #                               add_collision=True,
+        #                               add_visual=True)
+        #
+        #     # builder.initial_pose = sapien.Pose(p=[0, 0, 0])
+        #     builder.initial_pose = sapien.Pose(p=[-0.35, -0.2, -0.0123])
+        #     builder.set_scene_idxs([i])
+        #     builder.set_physx_body_type("static")
+        #     self._objs.append(builder.build(name=f"{model_id}-{i}"))
+        #     self.remove_from_state_dict_registry(self._objs[-1])
+        # self.obj_extra = Actor.merge(self._objs, name="ycb_objects")
+        # # self.add_to_state_dict_registry(self.obj)
 
-        # randomize the list of all possible models in the YCB dataset
-        # then sub-scene i will load model model_ids[i % number_of_ycb_objects]
-        model_ids = self._batched_episode_rng.choice(kitchen_model_ids, replace=True)
-        # if (
-        #         self.num_envs > 1
-        #         and self.num_envs < len(self.kitchen_model_ids)
-        #         and self.reconfiguration_freq <= 0
-        #         and not WARNED_ONCE
-        # ):
-        #     WARNED_ONCE = True
-        #     print(
-        #         """There are less parallel environments than total available models to sample.
-        #         Not all models will be used during interaction even after resets unless you call env.reset(options=dict(reconfigure=True))
-        #         or set reconfiguration_freq to be >= 1."""
-        #     )
-        self.model_id = model_ids[0]
         self._objs: List[Actor] = []
         self.obj_heights = []
-        for i, model_id in enumerate(model_ids):
-            # TODO: before official release we will finalize a metadata dataclass that these build functions should return.
+
+        import pickle
+        with open(
+                "/home/imishani/work/code/algorithms/manipulation-planning-private/scripts/planning/tests/data/static-obs/scene.pkl",
+                "rb") as f:
+            objects = pickle.load(f)
+        for object_key in objects.keys():
             builder = get_ycb_builder(self.scene,
-                                      id=model_id,
+                                      id=object_key,
                                       add_collision=True,
                                       add_visual=True)
-
-            # builder.initial_pose = sapien.Pose(p=[0, 0, 0])
-            builder.initial_pose = sapien.Pose(p=[-0.35, -0.2, -0.0123])
-            builder.set_scene_idxs([i])
+            pose = objects[object_key]
+            builder.initial_pose = sapien.Pose(p=pose[:3],
+                                               q=pose[3:])
             builder.set_physx_body_type("static")
-            self._objs.append(builder.build(name=f"{model_id}-{i}"))
+            builder.set_scene_idxs([0])  # TODO: all these indecies are not good and gpu wil not work!
+            self._objs.append(builder.build(name=f"{object_key}-{0}"))
             self.remove_from_state_dict_registry(self._objs[-1])
-        self.obj_extra = Actor.merge(self._objs, name="ycb_objects")
-        # self.add_to_state_dict_registry(self.obj)
 
     def _after_reconfigure(self, options: dict):
 
@@ -223,7 +244,6 @@ class PushBlockEnv(BaseEnv):
             self.object_zs.append(-collision_mesh.bounding_box.bounds[0, 2])
             self.object_meshes.append(collision_mesh)
         self.object_zs = common.to_tensor(self.object_zs, device=self.device)
-
 
 
     def _initialize_episode(self, env_idx: torch.Tensor, options: dict):
@@ -289,11 +309,11 @@ class PushBlockEnv(BaseEnv):
             if not self.additional_objs:
                 return
 
-            # xyz[:, :2] = torch.rand((b, 2)) * torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) + self.table_scene.table.pose.p[:, :2] - torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) / 2
-            xyz[..., :2] = torch.tensor([-0.35, -0.2]).repeat(b, 1).to(self.device)
-            xyz[:, 2] = self.object_zs[env_idx]
-            qs = randomization.random_quaternions(b, lock_x=True, lock_y=True)
-            self.obj_extra.set_pose(Pose.create_from_pq(p=xyz, q=qs))
+            # # xyz[:, :2] = torch.rand((b, 2)) * torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) + self.table_scene.table.pose.p[:, :2] - torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) / 2
+            # xyz[..., :2] = torch.tensor([-0.35, -0.2]).repeat(b, 1).to(self.device)
+            # xyz[:, 2] = self.object_zs[env_idx]
+            # qs = randomization.random_quaternions(b, lock_x=True, lock_y=True)
+            # self.obj_extra.set_pose(Pose.create_from_pq(p=xyz, q=qs))
 
     def set_target_pose(self, options: dict):
         target_region_xyz = self.obj.pose.p
