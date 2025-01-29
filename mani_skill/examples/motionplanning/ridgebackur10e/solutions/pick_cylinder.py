@@ -6,9 +6,9 @@ import trimesh
 
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
+from transforms3d.euler import euler2quat
 
-
-from mani_skill.envs.tasks import PickSingleKitchenYCBEnv, PickHeavyClutterYCBEnv, PickCubeEnv, PickBlockEnv
+from mani_skill.envs.tasks import PickBlockEnv
 from mani_skill.examples.motionplanning.ridgebackur10e.motionplanner import \
     RidgebackUR10ePlanningSolver, CLOSED, OPEN
 from mani_skill.examples.motionplanning.panda.utils import (
@@ -16,7 +16,7 @@ from mani_skill.examples.motionplanning.panda.utils import (
 from mani_skill.utils.common import quat_diff_rad
 from mani_skill.utils.geometry.rotation_conversions import quaternion_to_matrix
 
-def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | PickBlockEnv,
+def solve(env: PickBlockEnv,
           seed=None, debug=False, vis=False, reset=True):
     if reset:
         env.reset(seed=seed)
@@ -34,17 +34,8 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
 
     FINGER_LENGTH = 0.025
     env = env.unwrapped
-
-    if isinstance(env, PickCubeEnv):
-        target = env.cube
-    elif isinstance(env, PickSingleKitchenYCBEnv):
-        target = env.obj
-    elif isinstance(env, PickHeavyClutterYCBEnv):
-        target = env.target_object
-    else:
-        raise ValueError("Unknown environment type")
-
-    # loop through the objects in the scene, and if they are not the object of interest, add them to the planner
+    assert len(env._objs) > 0
+    target = env._objs[0]
 
     ptc_array = None
     for actor in env.scene.actors.values():
@@ -67,21 +58,15 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     # get_ooi = lambda x: next(y for y in x if y.per_scene_id[ind_env] == env.obj.per_scene_id[ind_env])
     ooi = get_ooi(env.scene.actors.values())
     aabb_size = ooi.get_collision_meshes()[0].bounding_cylinder.extents[0]
-    grasp_pose = planner.find_best_grasp(ooi, n_samples=100)
-
-    qpose = grasp_pose[1]
-    grasp_pose = sapien.Pose(grasp_pose[0].p, grasp_pose[0].q)
+    grasp_position = ooi.pose.p
+    grasp_pose = sapien.Pose(p=grasp_position.cpu().numpy().squeeze() + np.array([0, 0, 0.1]),
+                             q=euler2quat(0.0, -np.pi/2, 0))
 
     # -------------------------------------------------------------------------- #
     # Reach
     # -------------------------------------------------------------------------- #
-    grasp_pose = grasp_pose * sapien.Pose([0., 0, 0.05])
-    if isinstance(env, PickSingleKitchenYCBEnv):
-        grasp_pose = grasp_pose * sapien.Pose([0., 0, -0.07])
-    if abs(ooi.pose.p[0, 0] - grasp_pose.p[0]) < 0.25 * aabb_size:
-        grasp_pose = grasp_pose * sapien.Pose([0, 0, aabb_size * 0.25])
-
-    reach_pose = grasp_pose * sapien.Pose([0., 0, 0.10])
+    # grasp_pose = grasp_pose * sapien.Pose([0., 0, -0.005])
+    reach_pose = grasp_pose * sapien.Pose([0., 0, 0.1])
 
     meshes = ooi.get_collision_meshes()
     ooi_bb = ooi.get_first_collision_mesh().bounding_box.bounds
@@ -119,7 +104,7 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
 
     res = planner.control_gripper(gripper_state=CLOSED)
 
-    reach_pose = reach_pose * sapien.Pose(p=[0, 0, 0.05])
+    reach_pose = reach_pose * sapien.Pose(p=[0.05, 0, 0.0])
 
     if planner.move_to_pose_with_screw(reach_pose, refine_steps=10) == -1:
         print("Failed screw grasp to reach")
@@ -150,27 +135,29 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     ooi_relative_pose = ooi.pose.inv() * planner.robot.get_links()[-1].pose
     mplib_rel_pose = mplib.Pose(ooi_relative_pose.p.squeeze().cpu().numpy(),
                                 ooi_relative_pose.q.squeeze().cpu().numpy())
-    planner.planner.update_attached_box(size=(ooi_bb[1, 0] - ooi_bb[0, 0],
-                                              ooi_bb[1, 1] - ooi_bb[0, 1],
-                                              ooi_bb[1, 2] - ooi_bb[0, 2]),
-    # planner.planner.update_attached_box(size=2*ooi._bodies[0].collision_shapes[0].half_size,
-    # planner.planner.update_attached_box(size=(2*ooi._bodies[0].collision_shapes[0].radius,
-    #                                           2*ooi._bodies[0].collision_shapes[0].radius,
-    #                                           2*ooi._bodies[0].collision_shapes[0].half_length),
-                                        pose=mplib_rel_pose)
+    planner.planner.update_attached_box(size=(ooi_bb[1, 2] - ooi_bb[0, 2],
+                                              ooi_bb[1, 0] - ooi_bb[0, 0],
+                                              ooi_bb[1, 1] - ooi_bb[0, 1]),
+                                        pose=mplib.Pose())
+
+    # #generate pointcloud from cylinder
+    # planner.planner.update_attached_sphere(radius=0.254/2.,
+    #                                        pose=mplib.Pose())
 
 
 
     # -------------------------------------------------------------------------- #
     # Move to goal pose
     # -------------------------------------------------------------------------- #
-    # goal_pose = sapien.Pose(env.goal_site.pose.sp.p, reach_pose.q)
-    goal_pose = sapien.Pose(env.goal_site.pose.sp.p)
+    goal_pose = sapien.Pose(env.goal_site.pose.sp.p + np.array([0, 0, 0.15]), reach_pose.q)
+    # goal_pose = sapien.Pose(env.goal_site.pose.sp.p)
 
 
     # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=True)
-    res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=False)
-    # res = planner.move_to_pose_with_screw(goal_pose)
+    # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=False)
+    res = planner.move_to_pose_with_screw(goal_pose)
+    goal_pose = sapien.Pose(env.goal_site.pose.sp.p + np.array([0, 0, 0.1]), reach_pose.q)
+    res = planner.move_to_pose_with_screw(goal_pose)
     if res == -1:
         planner.close()
         return res

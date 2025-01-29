@@ -16,7 +16,7 @@ from mani_skill.utils.geometry.rotation_conversions import euler_angles_to_matri
 from transforms3d.euler import euler2quat, quat2mat, euler2mat, quat2euler
 
 kitchen_keywords = [
-    # 'pitcher',
+    'pitcher',
     'mug',
     'cup',
     'plate',
@@ -54,62 +54,70 @@ class ItemPlacer:
         self.items = items
 
     def check_aabb_overlap(self, center1, aabb1, center2, aabb2, rotation1, rotation2):
+        #convert to bounding circle
+        radius1 = np.linalg.norm(np.array([aabb1['max'][0] - aabb1['min'][0], aabb1['max'][1] - aabb1['min'][1]]) / 2.)
+        radius2 = np.linalg.norm(np.array([aabb2['max'][0] - aabb2['min'][0], aabb2['max'][1] - aabb2['min'][1]]) / 2.)
+        dist = np.linalg.norm(center1[:2] - center2[:2])
+        print(dist <= radius1 + radius2)
+
+        return dist <= radius1 + radius2
+
         # TODO: check if this function correct
-        # Compute center and half-extents
-        half_extents1 = np.array([aabb1['max'][0] - aabb1['min'][0], aabb1['max'][1] - aabb1['min'][1]]) / 2
-        half_extents2 = np.array([aabb2['max'][0] - aabb2['min'][0], aabb2['max'][1] - aabb2['min'][1]]) / 2
-
-        # Compute vertices of both AABBs
-        def get_aabb_vertices(center, extents, rot):
-            # Compute corner points without rotation
-            corners = np.array([
-                [-extents[0], -extents[1]],
-                [extents[0], -extents[1]],
-                [extents[0], extents[1]],
-                [-extents[0], extents[1]]
-            ])
-
-            # Rotate corners
-            rotated_corners = (rot @ corners.T).T
-
-            # Translate rotated corners
-            return rotated_corners + center[:2]
-
-        # Get vertices
-        vertices1 = get_aabb_vertices(center1, half_extents1, rotation1[:2, :2])
-        vertices2 = get_aabb_vertices(center2, half_extents2, rotation2[:2, :2])
-
-        # Project vertices onto separating axes
-        def project_vertices(vertices, axis):
-            return [np.dot(v, axis) for v in vertices]
-
-        # Axes to test (box normals)
-        axes = [
-            np.array([1, 0]),  # x-axis
-            np.array([0, 1]),  # y-axis
-        ]
-
-        # Add rotated axes
-        def get_rotated_normals(rot):
-            return [
-                rot @ np.array([1, 0]),
-                rot @ np.array([0, 1])
-            ]
-
-        axes.extend(get_rotated_normals(rotation1[:2, :2]))
-        axes.extend(get_rotated_normals(rotation2[:2, :2]))
-
-        # Test each axis
-        for axis in axes:
-            # Project vertices onto this axis
-            proj1 = project_vertices(vertices1, axis)
-            proj2 = project_vertices(vertices2, axis)
-
-            # Check for separation
-            if max(proj1) < min(proj2) or max(proj2) < min(proj1):
-                return False
-
-        return True
+        # # Compute center and half-extents
+        # half_extents1 = np.array([aabb1['max'][0] - aabb1['min'][0], aabb1['max'][1] - aabb1['min'][1]]) / 2
+        # half_extents2 = np.array([aabb2['max'][0] - aabb2['min'][0], aabb2['max'][1] - aabb2['min'][1]]) / 2
+        #
+        # # Compute vertices of both AABBs
+        # def get_aabb_vertices(center, extents, rot):
+        #     # Compute corner points without rotation
+        #     corners = np.array([
+        #         [-extents[0], -extents[1]],
+        #         [extents[0], -extents[1]],
+        #         [extents[0], extents[1]],
+        #         [-extents[0], extents[1]]
+        #     ])
+        #
+        #     # Rotate corners
+        #     rotated_corners = (rot @ corners.T).T
+        #
+        #     # Translate rotated corners
+        #     return rotated_corners + center[:2]
+        #
+        # # Get vertices
+        # vertices1 = get_aabb_vertices(center1, half_extents1, rotation1[:2, :2])
+        # vertices2 = get_aabb_vertices(center2, half_extents2, rotation2[:2, :2])
+        #
+        # # Project vertices onto separating axes
+        # def project_vertices(vertices, axis):
+        #     return [np.dot(v, axis) for v in vertices]
+        #
+        # # Axes to test (box normals)
+        # axes = [
+        #     np.array([1, 0]),  # x-axis
+        #     np.array([0, 1]),  # y-axis
+        # ]
+        #
+        # # Add rotated axes
+        # def get_rotated_normals(rot):
+        #     return [
+        #         rot @ np.array([1, 0]),
+        #         rot @ np.array([0, 1])
+        #     ]
+        #
+        # axes.extend(get_rotated_normals(rotation1[:2, :2]))
+        # axes.extend(get_rotated_normals(rotation2[:2, :2]))
+        #
+        # # Test each axis
+        # for axis in axes:
+        #     # Project vertices onto this axis
+        #     proj1 = project_vertices(vertices1, axis)
+        #     proj2 = project_vertices(vertices2, axis)
+        #
+        #     # Check for separation
+        #     if max(proj1) < min(proj2) or max(proj2) < min(proj1):
+        #         return False
+        #
+        # return True
 
     def check_collision(self, x, y, yaw, item_model):
         """
@@ -126,7 +134,8 @@ class ItemPlacer:
         for placed_x, placed_y, placed_yaw, placed_aabb, _ in self.placed_items:
             rotation_placed = euler_angles_to_matrix(torch.tensor([[0, 0, placed_yaw]]), 'ZYX').squeeze(0).cpu().numpy()
             center_placed = np.array([placed_x, placed_y, self.table_height + (placed_aabb['max'][2] - placed_aabb['min'][2])/2])
-            return self.check_aabb_overlap(center_item, aabb_item, center_placed, placed_aabb, rotation_item, rotation_placed)
+            if self.check_aabb_overlap(center_item, aabb_item, center_placed, placed_aabb, rotation_item, rotation_placed):
+                return True
         #     x_dist = abs(x - placed_x)
         #     y_dist = abs(y - placed_y)
         #     if (x_dist < ((aabb_item['max'][0] - aabb_item['min'][0] + placed_size['max'][0] - placed_size['min'][0]) / 2)) and \
@@ -266,7 +275,7 @@ def visualize_scene(scene, save_path=None):
     else:
         plt.show()
 
-def generate_kitchen_item_scenes(max_scenes=10, min_items=10, max_items=15):
+def generate_kitchen_item_scenes(max_scenes=40, min_items=10, max_items=15):
     """
     Generate new scenes with kitchen item permutations.
     """
@@ -293,7 +302,7 @@ def generate_kitchen_item_scenes(max_scenes=10, min_items=10, max_items=15):
 
     # Generate permutations
     # for r in range(min_items, max_items + 1):
-    for r in range(10):
+    for r in range(40):
         # get random r items
         # perm = np.random.choice(list(kitchen_ycb_dirs.keys()), r, replace=False)
         perm = np.random.choice(list(kitchen_ycb_dirs.keys()), 3, replace=False)

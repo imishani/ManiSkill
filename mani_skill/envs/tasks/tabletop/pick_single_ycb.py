@@ -274,15 +274,16 @@ class PickSingleKitchenYCBEnv(PickSingleYCBEnv):
     """
 
     kitchen_keywords = [
-        'pitcher',
-        'mug',
-        'cup',
-        'plate',
-        'bowl',
-        'spatula',
-        'knife',
-        'fork',
-        'spoon',
+        # 'pitcher',
+        # 'mug',
+        # 'cup',
+        # 'plate',
+        # 'bowl',
+        # 'spatula',
+        # 'knife',
+        # 'fork',
+        # 'spoon',
+        'chips'
     ]
 
     def __init__(self, *args, **kwargs):
@@ -303,7 +304,7 @@ class PickSingleKitchenYCBEnv(PickSingleYCBEnv):
         self.table_scene = TableSceneBuilder(
             env=self, robot_init_qpos_noise=self.robot_init_qpos_noise
         )
-        self.table_scene.build(scale=1.0)
+        self.table_scene.build(scale=1.2)
 
         self.kitchen_model_ids = [
             model_id for model_id in self.all_model_ids if any(keyword in model_id for keyword in self.kitchen_keywords)
@@ -368,7 +369,7 @@ class PickSingleKitchenYCBEnv(PickSingleYCBEnv):
             self.table_scene.initialize(env_idx)
             xyz = torch.zeros((b, 3))
             xyz[:, :2] = torch.rand((b, 2)) * torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) + self.table_scene.table.pose.p[:, :2] - torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) / 2
-            xyz[:, 2] = self.object_zs[env_idx]
+            xyz[:, 2] = self.object_zs[env_idx] + 1e-2
             qs = random_quaternions(b, lock_x=True, lock_y=True)
             self.obj.set_pose(Pose.create_from_pq(p=xyz, q=qs))
 
