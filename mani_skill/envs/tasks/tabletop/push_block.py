@@ -62,7 +62,8 @@ class PushBlockEnv(BaseEnv):
 
     def __init__(self, *args, robot_uids="static_ridgebackur10e",
                  robot_init_qpos_noise=0.02,
-                 additional_objs=True,
+                 additional_objs=False,
+                 springles=False,
                  **kwargs):
         # specifying robot_uids="panda" as the default means gym.make("PushCube-v1") will default to using the panda arm.
         self.robot_init_qpos_noise = robot_init_qpos_noise
@@ -72,6 +73,7 @@ class PushBlockEnv(BaseEnv):
             )
         )
         self.additional_objs = additional_objs
+        self.springles = springles
         super().__init__(*args, robot_uids=robot_uids, **kwargs)
 
     # Specify default simulation/gpu memory configurations to override any default values
@@ -212,26 +214,37 @@ class PushBlockEnv(BaseEnv):
         self._objs: List[Actor] = []
         self.obj_heights = []
 
-        import pickle
-        with open(
-                "/home/imishani/work/code/algorithms/manipulation-planning-private/scripts/planning/tests/data/static-obs/scene.pkl",
-                "rb") as f:
-            objects = pickle.load(f)
-        for object_key in objects.keys():
-            builder = get_ycb_builder(self.scene,
-                                      id=object_key,
-                                      add_collision=True,
-                                      add_visual=True)
-            pose = objects[object_key]
-            builder.initial_pose = sapien.Pose(p=pose[:3],
-                                               q=pose[3:])
-            builder.set_physx_body_type("static")
-            builder.set_scene_idxs([0])  # TODO: all these indecies are not good and gpu wil not work!
-            self._objs.append(builder.build(name=f"{object_key}-{0}"))
-            self.remove_from_state_dict_registry(self._objs[-1])
+        if not self.springles:
+            import pickle
+            with open(
+                    "/home/imishani/work/code/algorithms/manipulation-planning-private/scripts/planning/tests/data/static-obs/scene.pkl",
+                    "rb") as f:
+                objects = pickle.load(f)
+            for object_key in objects.keys():
+                builder = get_ycb_builder(self.scene,
+                                          id=object_key,
+                                          add_collision=True,
+                                          add_visual=True)
+                pose = objects[object_key]
+                builder.initial_pose = sapien.Pose(p=pose[:3],
+                                                   q=pose[3:])
+                builder.set_physx_body_type("static")
+                builder.set_scene_idxs([0])  # TODO: all these indecies are not good and gpu wil not work!
+                self._objs.append(builder.build(name=f"{object_key}-{0}"))
+                self.remove_from_state_dict_registry(self._objs[-1])
+        else:
+            # add cylinder
+            self.cylinder = actors.build_cylinder(self.scene,
+                                             0.04,
+                                             0.254 / 2.,
+                                             [1, 0, 0, 1],
+                                             "springles",
+                                             initial_pose=sapien.Pose(p=[0, 0, 0.254 / 2]),
+                                             body_type="static")
+            # cylinder.set_mass(cylinder.get_mass() * 0.1)
+            self._objs.append(self.cylinder)
 
     def _after_reconfigure(self, options: dict):
-
         collision_mesh = self.obj.get_first_collision_mesh()
         self.obj_z = -collision_mesh.bounding_box.bounds[0, 2]
         if not self.additional_objs:
@@ -308,6 +321,21 @@ class PushBlockEnv(BaseEnv):
 
             if not self.additional_objs:
                 return
+            if self.springles:
+                # rotate the cylinder to stand up
+                q = euler2quat(np.pi / 2., np.pi / 2, 0)
+                # randomize position
+                xyz[..., 0] = ((torch.rand(
+                    (b, 1)) * self.table_scene.table_length - self.table_scene.table_length / 2.) * 0.5) - 0.05
+                xyz[..., 1] = (torch.rand(
+                    (b, 1)) * self.table_scene.table_width - self.table_scene.table_width / 2.) * 0.8
+                xyz[..., 0] += self.table_scene.table.pose.p[env_idx, 0]
+                xyz[..., 1] += self.table_scene.table.pose.p[env_idx, 1]
+                # xyz[..., 2] = self.block_half_size[2] + 1e-3
+                # xyz[..., 2] = self.block_half_size[2] * 1.8 + 1e-3
+                xyz[..., 2] = 0.254 / 2. + 1e-3
+                # self._objs[0].set_pose(sapien.Pose(p=xyz.cpu().numpy().squeeze(), q=q))
+                self.cylinder.set_pose(sapien.Pose(p=xyz.cpu().numpy().squeeze(), q=q))
 
             # # xyz[:, :2] = torch.rand((b, 2)) * torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) + self.table_scene.table.pose.p[:, :2] - torch.tensor([[self.table_scene.table_length, self.table_scene.table_width]]) / 2
             # xyz[..., :2] = torch.tensor([-0.35, -0.2]).repeat(b, 1).to(self.device)
@@ -364,13 +392,24 @@ class PushBlockEnv(BaseEnv):
         obs = dict(
             tcp_pose=self.agent.tcp.pose.raw_pose,
         )
-        if self._obs_mode in ["state", "state_dict"]:
-            # if the observation mode is state/state_dict, we provide ground truth information about where the cube is.
-            # for visual observation modes one should rely on the sensed visual data to determine where the cube is
-            obs.update(
-                goal_pos=self.goal_region.pose.p,
-                obj_pose=self.obj.pose.raw_pose,
-            )
+        if not self.additional_objs and not self.springles:
+            if self._obs_mode in ["state", "state_dict"]:
+                # if the observation mode is state/state_dict, we provide ground truth information about where the cube is.
+                # for visual observation modes one should rely on the sensed visual data to determine where the cube is
+                obs.update(
+                    goal_pos=self.goal_region.pose.p,
+                    obj_pose=self.obj.pose.raw_pose,
+                )
+        else:
+            if self._obs_mode in ["state", "state_dict"]:
+                # if the observation mode is state/state_dict, we provide ground truth information about where the cube is.
+                # for visual observation modes one should rely on the sensed visual data to determine where the cube is
+                obs.update(
+                    goal_pos=self.goal_region.pose.p,
+                    obj_pose=self.obj.pose.raw_pose,
+                    # added_obj_pose=self.cylinder.pose.raw_pose,
+                )
+
         return obs
 
     def compute_dense_reward(self, obs: Any, action: Array, info: Dict):

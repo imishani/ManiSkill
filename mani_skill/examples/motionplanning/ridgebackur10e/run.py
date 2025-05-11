@@ -11,7 +11,7 @@ from mani_skill.utils.wrappers.record import RecordEpisode
 from mani_skill.trajectory.merge_trajectory import merge_trajectories
 # from mani_skill.examples.motionplanning.panda.solutions import solvePushCube, solvePickCube, solveStackCube, \
 #     solvePegInsertionSide, solvePlugCharger, solvePullCubeTool, solveLiftPegUpright, solvePullCube
-from mani_skill.examples.motionplanning.ridgebackur10e.solutions import solvePickYCBUr
+from mani_skill.examples.motionplanning.ridgebackur10e.solutions import solvePickYCBUr, solvePickCylinderUr
 from mani_skill.examples.motionplanning.ridgebackur10e.solutions import solvePushBlockUr
 
 
@@ -22,6 +22,7 @@ MP_SOLUTIONS = {
     "PickCube-v1": solvePickYCBUr,
     "PickBlock-v1": solvePickYCBUr,
     "PushBlock-v1": solvePushBlockUr,
+    "PickCylinder-v1": solvePickCylinderUr
 }
 
 
@@ -55,8 +56,12 @@ def parse_args(args=None):
 
 def _main(args, proc_id: int = 0, start_seed: int = 0) -> str:
     env_id = args.env_id
+    if env_id == "PickCylinder-v1":
+        env_id_real = "PickBlock-v1"
+    else:
+        env_id_real = env_id
     env = gym.make(
-        env_id,
+        env_id_real,
         obs_mode=args.obs_mode,
         control_mode="pd_joint_pos",
         # control_mode="pd_ee_delta_pose",

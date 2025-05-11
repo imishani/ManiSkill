@@ -178,13 +178,18 @@ class PickBlockEnv(PickCubeEnv):
         'spoon',
     ]
 
-    def __init__(self, additional_objs=False, *args, **kwargs):
+    def __init__(self,
+                 additional_objs=True,
+                 springles=True,
+                 *args,
+                 **kwargs):
         self.all_model_ids = np.array(
             list(
                 load_json(ASSET_DIR / "assets/mani_skill2_ycb/info_pick_v0.json").keys()
             )
         )
         self.additional_objs = additional_objs
+        self.springles = springles
         super().__init__(*args, **kwargs)
 
     @property
@@ -193,7 +198,7 @@ class PickBlockEnv(PickCubeEnv):
         # return CameraConfig("render_camera", pose, 1280, 1280, 1, 0.01, 100)
         pose = sapien_utils.look_at(eye=[1., 0, 1.8], target=[-0.12, 0, 0.1])
         return CameraConfig(
-            "render_camera", pose=pose, width=2560, height=2560, fov=1, near=0.01, far=100
+            "render_camera", pose=pose, width=240, height=240, fov=1, near=0.01, far=100
         )
 
     def _load_agent(self, options: dict,
@@ -302,22 +307,32 @@ class PickBlockEnv(PickCubeEnv):
         self._objs: List[Actor] = []
         self.obj_heights = []
 
-        import pickle
-        with open("/home/imishani/work/code/algorithms/manipulation-planning-private/scripts/planning/tests/data/static-obs/scene.pkl", "rb") as f:
-            objects = pickle.load(f)
-        for object_key in objects.keys():
-            builder = get_ycb_builder(self.scene,
-                                      id=object_key,
-                                      add_collision=True,
-                                      add_visual=True)
-            pose = objects[object_key]
-            builder.initial_pose = sapien.Pose(p=pose[:3],
-                                               q=pose[3:])
-            builder.set_physx_body_type("static")
-            builder.set_scene_idxs([0]) # TODO: all these indecies are not good and gpu wil not work!
-            self._objs.append(builder.build(name=f"{object_key}-{0}"))
-            self.remove_from_state_dict_registry(self._objs[-1])
-
+        if not self.springles:
+            import pickle
+            with open("/home/imishani/work/code/algorithms/manipulation-planning-private/scripts/planning/tests/data/static-obs/scene.pkl", "rb") as f:
+                objects = pickle.load(f)
+            for object_key in objects.keys():
+                builder = get_ycb_builder(self.scene,
+                                          id=object_key,
+                                          add_collision=True,
+                                          add_visual=True)
+                pose = objects[object_key]
+                builder.initial_pose = sapien.Pose(p=pose[:3],
+                                                   q=pose[3:])
+                builder.set_physx_body_type("static")
+                builder.set_scene_idxs([0]) # TODO: all these indecies are not good and gpu wil not work!
+                self._objs.append(builder.build(name=f"{object_key}-{0}"))
+                self.remove_from_state_dict_registry(self._objs[-1])
+        else:
+            # add cylinder
+            self.cylinder = actors.build_cylinder(self.scene,
+                                             0.04,
+                                             0.254 / 2.,
+                                             [1, 0, 0, 1],
+                                             "springles",
+                                             initial_pose=sapien.Pose(p=[0, 0, 0.254 / 2]))
+            self.cylinder.set_mass(self.cylinder.get_mass() * 0.1)
+            self._objs.append(self.cylinder)
 
 
     def _after_reconfigure(self, options: dict):
@@ -404,13 +419,37 @@ class PickBlockEnv(PickCubeEnv):
             # xyz[:, 2] = self.object_zs[env_idx]
             # qs = randomization.random_quaternions(b, lock_x=True, lock_y=True, lock_z=True)
             # self.obj.set_pose(Pose.create_from_pq(p=xyz, q=qs))
+            if self.springles:
+                # rotate the cylinder to stand up
+                q = euler2quat(np.pi / 2., np.pi/2, 0)
+                # randomize position
+                xyz[..., 0] = ((torch.rand(
+                    (b, 1)) * self.table_scene.table_length - self.table_scene.table_length / 2.) * 0.5) - 0.05
+                xyz[..., 1] = (torch.rand(
+                    (b, 1)) * self.table_scene.table_width - self.table_scene.table_width / 2.) * 0.8
+                xyz[..., 0] += self.table_scene.table.pose.p[env_idx, 0]
+                xyz[..., 1] += self.table_scene.table.pose.p[env_idx, 1]
+                # xyz[..., 2] = self.block_half_size[2] + 1e-3
+                # xyz[..., 2] = self.block_half_size[2] * 1.8 + 1e-3
+                xyz[..., 2] = 0.254 / 2. + 1e-3
+                self.cylinder.set_pose(sapien.Pose(p=xyz.cpu().numpy().squeeze(), q=q))
+                xyz[..., 0] += np.random.uniform(-0.3, 0.3, (b, 1))
+                xyz[..., 1] += np.random.uniform(-0.3, 0.3, (b, 1))
+                self.goal_site.set_pose(
+                    Pose.create_from_pq(p=xyz, q=euler2quat(0.0, -np.pi/2, 0)))
 
 
     def evaluate(self):
-        is_obj_placed = (
-                torch.linalg.norm(self.goal_site.pose.p[:, :2] - self.cube.pose.p[:, :2], axis=1)
-                <= self.goal_thresh
-        )
+        if not self.additional_objs and not self.springles:
+            is_obj_placed = (
+                    torch.linalg.norm(self.goal_site.pose.p[:, :2] - self.cube.pose.p[:, :2], axis=1)
+                    <= self.goal_thresh
+            )
+        else:
+            is_obj_placed = (
+                    torch.linalg.norm(self.goal_site.pose.p[:, :2] - self.cylinder.pose.p[:, :2], axis=1)
+                    <= self.goal_thresh
+            )
         is_grasped = self.agent.is_grasping(self.cube)
         is_robot_static = self.agent.is_static(0.2)
         return {
@@ -419,5 +458,23 @@ class PickBlockEnv(PickCubeEnv):
             "is_robot_static": is_robot_static,
             "is_grasped": is_grasped,
         }
+
+    def _get_obs_extra(self, info: Dict):
+        if not self.additional_objs and not self.springles:
+            return super()._get_obs_extra(info)
+
+        obs = dict(
+            is_grasped=info["is_grasped"],
+            tcp_pose=self.agent.tcp.pose.raw_pose,
+            goal_pos=self.goal_site.pose.p,
+        )
+        if "state" in self.obs_mode:
+            obs.update(
+                obj_pose=self.cube.pose.raw_pose,
+                added_obj_pose=self.cylinder.pose.raw_pose,
+                tcp_to_obj_pos=self.cube.pose.p - self.agent.tcp.pose.p,
+                obj_to_goal_pos=self.goal_site.pose.p - self.cube.pose.p,
+            )
+        return obs
 
 
