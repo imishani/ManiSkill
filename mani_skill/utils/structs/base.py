@@ -206,12 +206,11 @@ class PhysxRigidBodyComponentStruct(PhysxRigidBaseComponentStruct[T], Generic[T]
     @property
     def angular_velocity(self) -> torch.Tensor:
         if self.scene.gpu_sim_enabled:
-            # NOTE (stao): Currently physx has a bug that sapien inherits where link bodies on the GPU put linear/angular velocities in the wrong order...
-            if isinstance(self._objs[0], physx.PhysxArticulationLinkComponent):
-                return self._body_data[self._body_data_index, 7:10]
             return self._body_data[self._body_data_index, 10:13]
         else:
-            return torch.from_numpy(self._bodies[0].angular_velocity[None, :])
+            return torch.tensor(
+                np.array([body.angular_velocity for body in self._bodies])
+            )
 
     @property
     def auto_compute_mass(self) -> torch.Tensor:
@@ -261,9 +260,8 @@ class PhysxRigidBodyComponentStruct(PhysxRigidBaseComponentStruct[T], Generic[T]
     @property
     def linear_velocity(self) -> torch.Tensor:
         if self.scene.gpu_sim_enabled:
-            # NOTE (stao): Currently physx has a bug that sapien inherits where link bodies on the GPU put linear/angular velocities in the wrong order...
-            if isinstance(self._objs[0], physx.PhysxArticulationLinkComponent):
-                return self._body_data[self._body_data_index, 10:13]
+            # NOTE (stao): SAPIEN version 3.0.0b1 gpu sim has a bug inherited from physx where linear/angular velocities are in the wrong order
+            # for link entities, namely 7:10 was angular velocity and 10:13 was linear velocity. SAPIEN 3.0.0 and above fixes this
             return self._body_data[self._body_data_index, 7:10]
         else:
             return torch.from_numpy(self._bodies[0].linear_velocity[None, :])
@@ -356,9 +354,6 @@ class PhysxRigidDynamicComponentStruct(PhysxRigidBodyComponentStruct[T], Generic
     @property
     def angular_velocity(self) -> torch.Tensor:
         if self.scene.gpu_sim_enabled:
-            # NOTE (stao): Currently physx has a bug that sapien inherits where link bodies on the GPU put linear/angular velocities in the wrong order...
-            if isinstance(self._objs[0], physx.PhysxArticulationLinkComponent):
-                return self._body_data[self._body_data_index, 7:10]
             return self._body_data[self._body_data_index, 10:13]
         else:
             return torch.from_numpy(self._bodies[0].angular_velocity[None, :])
@@ -427,12 +422,11 @@ class PhysxRigidDynamicComponentStruct(PhysxRigidBodyComponentStruct[T], Generic
     @property
     def linear_velocity(self) -> torch.Tensor:
         if self.scene.gpu_sim_enabled:
-            # NOTE (stao): Currently physx has a bug that sapien inherits where link bodies on the GPU put linear/angular velocities in the wrong order...
-            if isinstance(self._objs[0], physx.PhysxArticulationLinkComponent):
-                return self._body_data[self._body_data_index, 10:13]
             return self._body_data[self._body_data_index, 7:10]
         else:
-            return torch.from_numpy(self._bodies[0].linear_velocity[None, :])
+            return torch.tensor(
+                np.array([body.linear_velocity for body in self._bodies])
+            )
 
     @linear_velocity.setter
     def linear_velocity(self, arg1: Array):

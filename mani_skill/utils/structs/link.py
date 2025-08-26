@@ -81,30 +81,23 @@ class Link(PhysxRigidBodyComponentStruct[physx.PhysxArticulationLinkComponent]):
         merged_joint_indexes = []
         merged_active_joint_indexes = []
         articulation_objs = []
-        is_root = links[0].is_root
+        has_one_root_link = any(link.is_root.any() for link in links)
         merged_scene_idxs = []
-        num_objs_per_actor = links[0]._num_objs
         for link in links:
             objs += link._objs
-            assert (
-                link.is_root == is_root
-            ), "all links given to merge must all be root or all not be root links"
             merged_scene_idxs.append(link._scene_idxs)
-            # if link is not root, then there are joints we can merge automatically
-            if not is_root:
+            # if all links are not root links, then there are joints we can merge automatically
+            if not has_one_root_link:
                 joint_objs += link.joint._objs
                 articulation_objs += link.articulation._objs
 
                 merged_active_joint_indexes.append(link.joint.active_index)
                 merged_joint_indexes.append(link.joint.index)
-            assert (
-                link._num_objs == num_objs_per_actor
-            ), "Each given link must have the same number of managed objects"
         merged_scene_idxs = torch.concat(merged_scene_idxs)
         merged_link = Link.create(
             objs, scene=links[0].scene, scene_idxs=merged_scene_idxs
         )
-        if not is_root:
+        if not has_one_root_link:
             merged_active_joint_indexes = torch.concat(merged_active_joint_indexes)
             merged_joint_indexes = torch.concat(merged_joint_indexes)
             merged_joint = ArticulationJoint.create(
@@ -116,9 +109,10 @@ class Link(PhysxRigidBodyComponentStruct[physx.PhysxArticulationLinkComponent]):
                 active_joint_index=merged_active_joint_indexes,
             )
             merged_link.joint = merged_joint
+            if name is not None:
+                merged_joint.name = f"{name}_joints"
             merged_joint.child_link = merged_link
         # remove articulation reference as it does not make sense and is only used to instantiate some properties like the physx system
-        # TODO (stao): akin to the joint merging above, we can also make a view of the articulations of each link. Is it necessary?
         merged_link.articulation = None
         merged_link.name = name
         merged_link.merged = True
@@ -134,12 +128,28 @@ class Link(PhysxRigidBodyComponentStruct[physx.PhysxArticulationLinkComponent]):
         """
         all_render_shapes: List[List[sapien.render.RenderShape]] = []
         for obj in self._objs:
-            all_render_shapes.append(
-                obj.entity.find_component_by_type(
-                    sapien.render.RenderBodyComponent
-                ).render_shapes
+            rb_comp = obj.entity.find_component_by_type(
+                sapien.render.RenderBodyComponent
             )
+            if rb_comp is not None:
+                all_render_shapes.append(rb_comp.render_shapes)
         return all_render_shapes
+
+    def get_visual_meshes(
+        self, to_world_frame: bool = True, first_only: bool = False
+    ) -> List[trimesh.Trimesh]:
+        """
+        Returns the visual mesh of each managed link object. Note results of this are not cached or optimized at the moment
+        so this function can be slow if called too often
+        """
+        merged_meshes = []
+        for link, link_render_shapes in zip(self._objs, self.render_shapes):
+            meshes = []
+            for render_shape in link_render_shapes:
+                if filter(link, render_shape):
+                    meshes.extend(get_render_shape_meshes(render_shape))
+            merged_meshes.append(merge_meshes(meshes))
+        return merged_meshes
 
     def generate_mesh(
         self,
@@ -186,7 +196,14 @@ class Link(PhysxRigidBodyComponentStruct[physx.PhysxArticulationLinkComponent]):
         return bboxes
 
     def set_collision_group_bit(self, group: int, bit_idx: int, bit: Union[int, bool]):
-        """Set's a specific collision group bit for all collision shapes in all parallel actors"""
+        """
+        Set's a specific collision group bit for all collision shapes in all parallel actors
+        Args:
+            group (int): the collision group to set the bit for. Typically you only need to use group 2 to disable collision checks between links to enable faster simulation.
+            bit_idx (int): the bit index to set
+            bit (int | bool): the bit value to set. Must be 1/0 or True/False.
+        """
+        # NOTE (stao): this collision group setting is highly specific to SAPIEN/PhysX.
         bit = int(bit)
         for body in self._bodies:
             for cs in body.get_collision_shapes():

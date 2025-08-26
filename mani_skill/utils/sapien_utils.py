@@ -3,6 +3,7 @@ Utilities that work with the simulation / SAPIEN
 """
 from __future__ import annotations
 
+import sys
 from typing import TYPE_CHECKING, Dict, List, Tuple, TypeVar
 
 import numpy as np
@@ -10,15 +11,16 @@ import sapien
 import sapien.physx as physx
 import sapien.render
 import sapien.wrapper.urdf_loader
+import torch
+from sapien.utils import Viewer
 
+from mani_skill.render import SAPIEN_RENDER_SYSTEM
 from mani_skill.utils.geometry.rotation_conversions import matrix_to_quaternion
 from mani_skill.utils.structs.pose import Pose
 
 if TYPE_CHECKING:
     from mani_skill.utils.structs.actor import Actor
-    from mani_skill.envs.scene import ManiSkillScene
-
-import torch
+    from mani_skill.sensors.camera import CameraConfig
 
 from mani_skill.utils.structs.types import Array, Device
 
@@ -115,7 +117,6 @@ def parse_urdf_config(config_dict: dict) -> Dict:
 
     Args:
         config_dict (dict): a dict containing link physical properties.
-        scene (ManiSkillScene): the simulation scene
 
     Returns:
         Dict: urdf config passed to `sapien.URDFLoader.load`.
@@ -313,7 +314,7 @@ def sapien_pose_to_opencv_extrinsic(sapien_pose_matrix: np.ndarray) -> np.ndarra
     return ex
 
 
-def look_at(eye, target, up=(0, 0, 1)) -> Pose:
+def look_at(eye, target, up=(0, 0, 1), device=None) -> Pose:
     """Get the camera pose in SAPIEN by the Look-At method.
 
     Note:
@@ -326,22 +327,22 @@ def look_at(eye, target, up=(0, 0, 1)) -> Pose:
         eye: camera location
         target: looking-at location
         up: a general direction of "up" from the camera.
-
+        device: device to put the pose on.
     Returns:
         Pose: camera pose
     """
     # only accept batched input as tensors
     # accept all other input as 1 dimensional
     if not isinstance(eye, torch.Tensor):
-        eye = torch.tensor(eye, dtype=torch.float32)
+        eye = torch.tensor(eye, dtype=torch.float32, device=device)
         assert eye.ndim == 1, eye.ndim
         assert len(eye) == 3, len(eye)
     if not isinstance(target, torch.Tensor):
-        target = torch.tensor(target, dtype=torch.float32)
+        target = torch.tensor(target, dtype=torch.float32, device=device)
         assert target.ndim == 1, target.ndim
         assert len(target) == 3, len(target)
     if not isinstance(up, torch.Tensor):
-        up = torch.tensor(up, dtype=torch.float32)
+        up = torch.tensor(up, dtype=torch.float32, device=device)
         assert up.ndim == 1, up.ndim
         assert len(up) == 3, len(up)
 
@@ -349,11 +350,12 @@ def look_at(eye, target, up=(0, 0, 1)) -> Pose:
         x = x.view(-1, 3)
         norm = torch.linalg.norm(x, dim=-1)
         zero_vectors = norm < eps
-        x[zero_vectors] = torch.zeros(3).float()
+        x[zero_vectors] = torch.zeros(3, device=x.device).float()
         x[~zero_vectors] /= norm[~zero_vectors].view(-1, 1)
         return x
 
     forward = normalize_tensor(target - eye)
+
     up = normalize_tensor(up)
     left = torch.cross(up, forward, dim=-1)
     left = normalize_tensor(left)
@@ -435,3 +437,42 @@ def is_state_dict_consistent(state_dict: dict):
                     if v.shape[0] != batch_size:
                         return False
     return True
+
+
+def create_viewer(viewer_camera_config: CameraConfig):
+    """Creates a viewer with the given camera config"""
+    if SAPIEN_RENDER_SYSTEM == "3.0":
+        sapien.render.set_viewer_shader_dir(
+            viewer_camera_config.shader_config.shader_pack
+        )
+        if viewer_camera_config.shader_config.shader_pack[:2] == "rt":
+            sapien.render.set_ray_tracing_denoiser(
+                viewer_camera_config.shader_config.shader_pack_config[
+                    "ray_tracing_denoiser"
+                ]
+            )
+            sapien.render.set_ray_tracing_path_depth(
+                viewer_camera_config.shader_config.shader_pack_config[
+                    "ray_tracing_path_depth"
+                ]
+            )
+            sapien.render.set_ray_tracing_samples_per_pixel(
+                viewer_camera_config.shader_config.shader_pack_config[
+                    "ray_tracing_samples_per_pixel"
+                ]
+            )
+        viewer = Viewer(
+            resolutions=(viewer_camera_config.width, viewer_camera_config.height)
+        )
+        if sys.platform == "darwin":  # macOS
+            viewer.window.set_content_scale(1)
+    elif SAPIEN_RENDER_SYSTEM == "3.1":
+        # TODO (stao): figure out how shader pack configs can be set at run time
+        viewer = Viewer(
+            resolutions=(viewer_camera_config.width, viewer_camera_config.height),
+            shader_pack=sapien.render.get_shader_pack(
+                viewer_camera_config.shader_config.shader_pack
+            ),
+        )
+
+    return viewer

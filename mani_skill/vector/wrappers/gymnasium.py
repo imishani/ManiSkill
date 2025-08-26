@@ -6,17 +6,18 @@ import gymnasium as gym
 import torch
 from gymnasium.vector import VectorEnv
 
+from mani_skill.utils.common import torch_clone_dict
 from mani_skill.utils.structs.types import Array
 
 if TYPE_CHECKING:
+    from gymnasium import Env
+
     from mani_skill.envs.sapien_env import BaseEnv
 
 
 class ManiSkillVectorEnv(VectorEnv):
     """
     Gymnasium Vector Env implementation for ManiSkill environments running on the GPU for parallel simulation and optionally parallel rendering
-
-    Note that currently this also assumes modeling tasks as infinite horizon (e.g. terminations is always False, only reset when timelimit is reached)
 
     Args:
         env: The environment created via gym.make / after wrappers are applied. If a string is given, we use gym.make(env) to create an environment
@@ -34,7 +35,7 @@ class ManiSkillVectorEnv(VectorEnv):
 
     def __init__(
         self,
-        env: Union[BaseEnv, str],
+        env: Union[Env, str],
         num_envs: int = None,
         auto_reset: bool = True,
         ignore_terminations: bool = False,
@@ -87,10 +88,10 @@ class ManiSkillVectorEnv(VectorEnv):
         self,
         *,
         seed: Optional[Union[int, List[int]]] = None,
-        options: Optional[dict] = dict(),
+        options: Optional[dict] = None,
     ):
         obs, info = self._env.reset(seed=seed, options=options)
-        if "env_idx" in options:
+        if options is not None and "env_idx" in options:
             env_idx = options["env_idx"]
             mask = torch.zeros(self.num_envs, dtype=bool, device=self.base_env.device)
             mask[env_idx] = True
@@ -141,12 +142,13 @@ class ManiSkillVectorEnv(VectorEnv):
         dones = torch.logical_or(terminations, truncations)
 
         if dones.any() and self.auto_reset:
-            final_obs = obs
+            final_obs = torch_clone_dict(obs)
             env_idx = torch.arange(0, self.num_envs, device=self.device)[dones]
-            obs, _ = self.reset(options=dict(env_idx=env_idx))
-            infos["final_info"] = infos.copy()
+            final_info = torch_clone_dict(infos)
+            obs, infos = self.reset(options=dict(env_idx=env_idx))
             # gymnasium calls it final observation but it really is just o_{t+1} or the true next observation
             infos["final_observation"] = final_obs
+            infos["final_info"] = final_info
             # NOTE (stao): that adding masks like below is a bit redundant and not necessary
             # but this is to follow the standard gymnasium API
             infos["_final_info"] = dones
