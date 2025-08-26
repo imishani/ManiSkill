@@ -61,12 +61,15 @@ def solve(env: PickBlockEnv,
     grasp_position = ooi.pose.p
     grasp_pose = sapien.Pose(p=grasp_position.cpu().numpy().squeeze() + np.array([0, 0, 0.1]),
                              q=euler2quat(0.0, -np.pi/2, 0))
+    # random yaw:
+    yaw = (np.random.rand() * np.pi / 4.) - np.pi / 8.
+    grasp_pose = grasp_pose * sapien.Pose(q=[0, 0, np.sin(yaw), np.cos(yaw)])
 
     # -------------------------------------------------------------------------- #
     # Reach
     # -------------------------------------------------------------------------- #
     # grasp_pose = grasp_pose * sapien.Pose([0., 0, -0.005])
-    reach_pose = grasp_pose * sapien.Pose([0., 0, 0.1])
+    reach_pose = grasp_pose * sapien.Pose([0.0, 0, 0.1])
 
     meshes = ooi.get_collision_meshes()
     ooi_bb = ooi.get_first_collision_mesh().bounding_box.bounds
@@ -83,6 +86,9 @@ def solve(env: PickBlockEnv,
             ptc_array = np.concatenate([ptc_array, np.array(ptc)])
     planner.add_collision_pts(ptc_array)
 
+    initial_qpose = planner.get_curr_qpose()
+
+
     if planner.move_to_pose_with_RRTConnect(reach_pose, refine_steps=10) == -1:
         # try to rotate by 180 degrees around z
         reach_pose = reach_pose * sapien.Pose(q=[0, 0, np.sin(np.pi), np.cos(np.pi)])
@@ -91,6 +97,7 @@ def solve(env: PickBlockEnv,
             return -1
         else:
             grasp_pose = grasp_pose * sapien.Pose(q=[0, 0, np.sin(np.pi), np.cos(np.pi)])
+    # reach_pose = grasp_pose * sapien.Pose([0.2, 0, 0.0])
     # planner.move_to_pose_with_screw(reach_pose, refine_steps=20)
 
     planner.clear_collisions()
@@ -105,6 +112,7 @@ def solve(env: PickBlockEnv,
     res = planner.control_gripper(gripper_state=CLOSED)
 
     reach_pose = reach_pose * sapien.Pose(p=[0.05, 0, 0.0])
+    reach_pose.p += np.array([0, 0, 0.1])
 
     if planner.move_to_pose_with_screw(reach_pose, refine_steps=10) == -1:
         print("Failed screw grasp to reach")
@@ -156,9 +164,15 @@ def solve(env: PickBlockEnv,
     # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=True)
     # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=False)
     res = planner.move_to_pose_with_screw(goal_pose)
+    if res == -1:
+        print("Failed move to goal")
+        planner.close()
+        return res
+
     goal_pose = sapien.Pose(env.goal_site.pose.sp.p + np.array([0, 0, 0.1]), reach_pose.q)
     res = planner.move_to_pose_with_screw(goal_pose)
     if res == -1:
+        print("Failed move to goal specific")
         planner.close()
         return res
 
@@ -166,6 +180,23 @@ def solve(env: PickBlockEnv,
         res[4]['success'] = torch.tensor([True])
 
     planner.control_gripper(gripper_state=OPEN)
+    goal_pose = goal_pose * sapien.Pose(p=[0, 0, 0.1])
+    if planner.move_to_pose_with_screw(goal_pose) == -1:
+        print("Failed retract after goal placed")
+        planner.close()
+        return -1
 
+    meshes = ooi.get_collision_meshes()
+    for mesh in meshes:
+        # add the mesh to the planner
+        # get pointcloud from mesh
+        ptc = trimesh.sample.sample_surface(mesh, 2000)[0]
+        # to numpy
+        if ptc_array is None:
+            ptc_array = np.array(ptc)
+        else:
+            ptc_array = np.concatenate([ptc_array, np.array(ptc)])
+    planner.add_collision_pts(ptc_array)
+    planner.move_to_qpose_withRRTConnect([initial_qpose])
     planner.close()
     return res

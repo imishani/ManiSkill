@@ -140,6 +140,10 @@ class RidgebackUR10ePlanningSolver:
         mat = transforms3d.quaternions.quat2mat(ee_pose.q)
         return mat[:, 2]
 
+    def get_curr_qpose(self):
+        qpose = self.robot.get_qpos().cpu().numpy()[0]
+        return qpose
+
     def make_f(self):
         """
         Create a constraint function that takes in a qpos and outputs a scalar.
@@ -523,6 +527,7 @@ class RidgebackUR10ePlanningSolver:
             self.all_collision_pts = pts
         else:
             self.all_collision_pts = np.vstack([self.all_collision_pts, pts])
+        self.planner.remove_point_cloud()
         self.planner.update_point_cloud(self.all_collision_pts)
 
     def clear_collisions(self):

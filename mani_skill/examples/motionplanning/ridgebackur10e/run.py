@@ -58,8 +58,10 @@ def _main(args, proc_id: int = 0, start_seed: int = 0) -> str:
     env_id = args.env_id
     if env_id == "PickCylinder-v1":
         env_id_real = "PickBlock-v1"
+        added_kwargs = {"pick_springles": True}
     else:
         env_id_real = env_id
+        added_kwargs = {}
     env = gym.make(
         env_id_real,
         obs_mode=args.obs_mode,
@@ -72,6 +74,7 @@ def _main(args, proc_id: int = 0, start_seed: int = 0) -> str:
         viewer_camera_configs=dict(shader_pack=args.shader),
         sim_backend=args.sim_backend,
         robot_uids=args.robot_uid,
+        **added_kwargs
     )
     if env_id not in MP_SOLUTIONS:
         raise RuntimeError(

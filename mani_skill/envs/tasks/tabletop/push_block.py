@@ -62,7 +62,7 @@ class PushBlockEnv(BaseEnv):
 
     def __init__(self, *args, robot_uids="static_ridgebackur10e",
                  robot_init_qpos_noise=0.02,
-                 additional_objs=False,
+                 additional_objs=True,
                  springles=False,
                  **kwargs):
         # specifying robot_uids="panda" as the default means gym.make("PushCube-v1") will default to using the panda arm.
@@ -238,10 +238,10 @@ class PushBlockEnv(BaseEnv):
                                              0.04,
                                              0.254 / 2.,
                                              [1, 0, 0, 1],
-                                             "springles",
+                                             "cylinder",
                                              initial_pose=sapien.Pose(p=[0, 0, 0.254 / 2]),
-                                             body_type="static")
-            # cylinder.set_mass(cylinder.get_mass() * 0.1)
+                                             body_type="dynamic")
+            self.cylinder.set_mass(self.cylinder.get_mass() * 100.)
             self._objs.append(self.cylinder)
 
     def _after_reconfigure(self, options: dict):

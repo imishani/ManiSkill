@@ -180,7 +180,8 @@ class PickBlockEnv(PickCubeEnv):
 
     def __init__(self,
                  additional_objs=True,
-                 springles=True,
+                 springles=False,
+                 pick_springles=False,
                  *args,
                  **kwargs):
         self.all_model_ids = np.array(
@@ -190,6 +191,7 @@ class PickBlockEnv(PickCubeEnv):
         )
         self.additional_objs = additional_objs
         self.springles = springles
+        self.pick_springles = pick_springles
         super().__init__(*args, **kwargs)
 
     @property
@@ -198,7 +200,7 @@ class PickBlockEnv(PickCubeEnv):
         # return CameraConfig("render_camera", pose, 1280, 1280, 1, 0.01, 100)
         pose = sapien_utils.look_at(eye=[1., 0, 1.8], target=[-0.12, 0, 0.1])
         return CameraConfig(
-            "render_camera", pose=pose, width=240, height=240, fov=1, near=0.01, far=100
+            "render_camera", pose=pose, width=1280, height=1280, fov=1, near=0.01, far=100
         )
 
     def _load_agent(self, options: dict,
@@ -329,7 +331,7 @@ class PickBlockEnv(PickCubeEnv):
                                              0.04,
                                              0.254 / 2.,
                                              [1, 0, 0, 1],
-                                             "springles",
+                                             "cylinder",
                                              initial_pose=sapien.Pose(p=[0, 0, 0.254 / 2]))
             self.cylinder.set_mass(self.cylinder.get_mass() * 0.1)
             self._objs.append(self.cylinder)
@@ -433,14 +435,15 @@ class PickBlockEnv(PickCubeEnv):
                 # xyz[..., 2] = self.block_half_size[2] * 1.8 + 1e-3
                 xyz[..., 2] = 0.254 / 2. + 1e-3
                 self.cylinder.set_pose(sapien.Pose(p=xyz.cpu().numpy().squeeze(), q=q))
-                xyz[..., 0] += np.random.uniform(-0.3, 0.3, (b, 1))
-                xyz[..., 1] += np.random.uniform(-0.3, 0.3, (b, 1))
-                self.goal_site.set_pose(
-                    Pose.create_from_pq(p=xyz, q=euler2quat(0.0, -np.pi/2, 0)))
+                if self.pick_springles:
+                    xyz[..., 0] += np.random.uniform(-0.3, 0.3, (b, 1))
+                    xyz[..., 1] += np.random.uniform(-0.3, 0.3, (b, 1))
+                    self.goal_site.set_pose(
+                        Pose.create_from_pq(p=xyz, q=euler2quat(0.0, -np.pi/2, 0)))
 
 
     def evaluate(self):
-        if not self.additional_objs and not self.springles:
+        if not self.pick_springles:
             is_obj_placed = (
                     torch.linalg.norm(self.goal_site.pose.p[:, :2] - self.cube.pose.p[:, :2], axis=1)
                     <= self.goal_thresh
@@ -460,7 +463,7 @@ class PickBlockEnv(PickCubeEnv):
         }
 
     def _get_obs_extra(self, info: Dict):
-        if not self.additional_objs and not self.springles:
+        if not self.springles:
             return super()._get_obs_extra(info)
 
         obs = dict(
