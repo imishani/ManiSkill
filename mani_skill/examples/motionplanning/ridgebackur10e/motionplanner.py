@@ -5,7 +5,7 @@ import numpy as np
 import sapien
 import transforms3d
 import trimesh
-from mplib.sapien_utils import SapienPlanningWorld, SapienPlanner
+# from mplib.sapien_utils import SapienPlanningWorld, SapienPlanner
 from sympy import euler
 
 from mani_skill.agents.base_agent import BaseAgent
@@ -214,8 +214,10 @@ class RidgebackUR10ePlanningSolver:
 
 
     def move_to_pose_with_RRTConnect(
-        self, pose: sapien.Pose, dry_run: bool = False, refine_steps: int = 0,
-            constrain=False
+        self, pose: sapien.Pose, 
+        dry_run: bool = False,
+        refine_steps: int = 0,
+        constrain=False
     ):
         pose = to_sapien_pose(pose)
         if self.grasp_pose_visual is not None:
@@ -376,9 +378,9 @@ class RidgebackUR10ePlanningSolver:
             # ee_orientation = choices[np.random.choice([0, 1])]
             # ee_pose = sapien.Pose(p=ee_position, q=euler.euler2quat(*ee_orientation, axes="rxyz"))
             # 3.
-            ee_orientation[2] = 0
-            ee_orientation[1] = -np.pi / 2
-            ee_orientation[0] *= 0.6
+            # ee_orientation[2] = 0
+            # ee_orientation[1] = -np.pi / 2
+            # ee_orientation[0] *= 0.6
             ee_pose = sapien.Pose(p=ee_position, q=euler.euler2quat(*ee_orientation, axes="szyx"))
 
             # # transform with respect to the base

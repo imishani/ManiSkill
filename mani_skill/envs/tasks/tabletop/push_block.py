@@ -62,7 +62,7 @@ class PushBlockEnv(BaseEnv):
 
     def __init__(self, *args, robot_uids="static_ridgebackur10e",
                  robot_init_qpos_noise=0.02,
-                 additional_objs=True,
+                 additional_objs=False,
                  springles=False,
                  **kwargs):
         # specifying robot_uids="panda" as the default means gym.make("PushCube-v1") will default to using the panda arm.

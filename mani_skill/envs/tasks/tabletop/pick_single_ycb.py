@@ -8,6 +8,7 @@ from mani_skill import ASSET_DIR
 from mani_skill.agents.robots.fetch.fetch import Fetch
 from mani_skill.agents.robots.panda.panda import Panda
 from mani_skill.agents.robots.panda.panda_wristcam import PandaWristCam
+from mani_skill.agents.robots.ridgeback_ur10e.ridgeback_ur10e import StaticRidgebackUR10e, RidgebackUR10e
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.envs.utils.randomization.pose import random_quaternions
 from transforms3d.euler import euler2quat

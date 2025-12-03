@@ -926,6 +926,6 @@ class StaticRidgebackUR10e(BaseAgent):
         # p = (self.finger1_link.pose.p + self.finger2_link.pose.p) / 2
         # q = (self.finger1_link.pose.q + self.finger2_link.pose.q) / 2
         # return Pose.create_from_pq(p=p, q=q)
-        return self.tcp_pose
+        return self.tcp.pose
 
 

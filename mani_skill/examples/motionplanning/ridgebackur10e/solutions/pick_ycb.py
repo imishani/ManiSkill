@@ -15,6 +15,7 @@ from mani_skill.examples.motionplanning.panda.utils import (
     compute_grasp_info_by_obb, get_actor_obb)
 from mani_skill.utils.common import quat_diff_rad
 from mani_skill.utils.geometry.rotation_conversions import quaternion_to_matrix
+import mplib.collision_detection as cd
 
 def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | PickBlockEnv,
           seed=None, debug=False, vis=False, reset=True):
@@ -53,7 +54,12 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
             # get collision meshes
             meshes = actor.get_collision_meshes()
             for mesh in meshes:
-                ptc = trimesh.sample.sample_surface(mesh, 2000)[0]
+                # col_obj: cd.fcl.CollisionObject = cd.fcl.CollisionObject(mesh)
+                # planner.planing_world.
+                # Decide number of points based on object size (surface area)
+                surface_area = mesh.area if hasattr(mesh, "area") else 1.0
+                n_points = int(np.clip(surface_area * 50, 200, 2000))
+                ptc = trimesh.sample.sample_surface(mesh, n_points)[0]
                 # to numpy
                 if ptc_array is None:
                     ptc_array = np.array(ptc)
@@ -90,13 +96,17 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     for mesh in meshes:
         # add the mesh to the planner
         # get pointcloud from mesh
-        ptc = trimesh.sample.sample_surface(mesh, 2000)[0]
+        surface_area = mesh.area if hasattr(mesh, "area") else 1.0
+        n_points = int(np.clip(surface_area * 50, 200, 2000))
+        ptc = trimesh.sample.sample_surface(mesh, n_points)[0]
         # to numpy
         if ptc_array is None:
             ptc_array = np.array(ptc)
         else:
             ptc_array = np.concatenate([ptc_array, np.array(ptc)])
     planner.add_collision_pts(ptc_array)
+
+    planner.control_gripper(gripper_state=OPEN)
 
     if planner.move_to_pose_with_RRTConnect(reach_pose, refine_steps=10) == -1:
         # try to rotate by 180 degrees around z
@@ -140,7 +150,9 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
             for mesh in meshes:
                 # add the mesh to the planner
                 # get pointcloud from mesh
-                ptc = trimesh.sample.sample_surface(mesh, 2000)[0]
+                surface_area = mesh.area if hasattr(mesh, "area") else 1.0
+                n_points = int(np.clip(surface_area * 50, 200, 2000))
+                ptc = trimesh.sample.sample_surface(mesh, n_points)[0]
                 if ptc_array is None:
                     ptc_array = np.array(ptc)
                 else:

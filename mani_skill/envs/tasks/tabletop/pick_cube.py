@@ -244,7 +244,7 @@ class PickBlockEnv(PickCubeEnv):
     ]
 
     def __init__(self,
-                 additional_objs=True,
+                 additional_objs=False,
                  springles=False,
                  pick_springles=False,
                  *args,
@@ -322,7 +322,7 @@ class PickBlockEnv(PickCubeEnv):
         self.goal_site = actors.build_sphere(
             self.scene,
             radius=self.goal_thresh,
-            color=[0, 1, 0, 0.0],
+            color=[0, 1, 0, 0.5],
             name="goal_site",
             body_type="kinematic",
             add_collision=False,
