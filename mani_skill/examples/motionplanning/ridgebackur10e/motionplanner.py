@@ -5,7 +5,7 @@ import numpy as np
 import sapien
 import transforms3d
 import trimesh
-# from mplib.sapien_utils import SapienPlanningWorld, SapienPlanner
+from mplib.sapien_utils import SapienPlanningWorld, SapienPlanner
 from sympy import euler
 
 from mani_skill.agents.base_agent import BaseAgent
