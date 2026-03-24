@@ -136,7 +136,7 @@ def _main(args, proc_id: int = 0, start_seed: int = 0) -> str:
                     success_rate=np.mean(successes),
                     failed_motion_plan_rate=failed_motion_plans / (seed + 1),
                     avg_episode_length=np.mean(solution_episode_lengths),
-                    max_episode_length=np.max(solution_episode_lengths),
+                    # max_episode_length=np.max(solution_episode_lengths),
                     # min_episode_length=np.min(solution_episode_lengths)
                 )
             )

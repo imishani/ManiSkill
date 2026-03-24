@@ -125,7 +125,7 @@ class PickHeavyClutterEnv(BaseEnv):
                 init_pose = actor_config["pose"]
                 builder.initial_pose = sapien.Pose(p=init_pose[:3], q=init_pose[3:])
                 builder.set_scene_idxs([i])
-                obj = builder.build(name=f"set_{i}_{actor_config['model_id']}")
+                obj = builder.build(name=f"set_{i}_{len(self._objs)}_{actor_config['model_id']}")
                 self._objs.append(obj)
                 if actor_config["rep_pts"] is not None:
                     # rep_pts is representative points, representing visible points

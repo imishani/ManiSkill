@@ -287,16 +287,16 @@ class PickSingleKitchenYCBEnv(PickSingleYCBEnv):
     """
 
     kitchen_keywords = [
-        # 'pitcher',
-        # 'mug',
-        # 'cup',
-        # 'plate',
-        # 'bowl',
-        # 'spatula',
-        # 'knife',
-        # 'fork',
-        # 'spoon',
-        'chips'
+        'pitcher',
+        'mug',
+        'cup',
+        'plate',
+        'bowl',
+        'spatula',
+        'knife',
+        'fork',
+        'spoon',
+        # 'chips'
     ]
 
     def __init__(self, *args, **kwargs):
@@ -322,6 +322,8 @@ class PickSingleKitchenYCBEnv(PickSingleYCBEnv):
         self.kitchen_model_ids = [
             model_id for model_id in self.all_model_ids if any(keyword in model_id for keyword in self.kitchen_keywords)
         ]
+
+        print("Kitchen YCB objects: ", self.kitchen_model_ids)
 
         # randomize the list of all possible models in the YCB dataset
         # then sub-scene i will load model model_ids[i % number_of_ycb_objects]

@@ -19,3 +19,4 @@ from .roll_ball import RollBallEnv
 from .push_t import PushTEnv
 from .pull_cube_tool import PullCubeToolEnv
 from .stack_pyramid import StackPyramidEnv
+from .retrieve_heavy_from_shelf import RetrieveHeavyFromShelfEnv

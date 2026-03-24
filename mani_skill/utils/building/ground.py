@@ -61,10 +61,10 @@ def build_ground(
         normals[:, 2] = 1
 
         mat = sapien.render.RenderMaterial()
-        mat.base_color_texture = sapien.render.RenderTexture2D(
-            filename=texture_file,
-            mipmap_levels=mipmap_levels,
-        )
+#        mat.base_color_texture = sapien.render.RenderTexture2D(
+#            filename=texture_file,
+#            mipmap_levels=mipmap_levels,
+#        )
         uv_scale = floor_width / texture_square_len
         uvs = np.zeros((len(vertices), 2))
         uvs[:, 0] = (xys[:, 0] * uv_scale + floor_half_width) / floor_width
