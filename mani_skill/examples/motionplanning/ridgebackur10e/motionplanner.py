@@ -358,7 +358,9 @@ class RidgebackUR10ePlanningSolver:
         obj_min, obj_max = aabb[0, :], aabb[1, :]
         for _ in range(n_samples):
             ee_position = np.random.uniform(obj_min, obj_max, size=3)
-            ee_position[2] = (obj_max[2] - obj_min[2]) / 2
+            # Keep z at the object's world-frame center so sampled grasp poses stay
+            # on the object instead of collapsing near the global origin.
+            ee_position[2] = 0.5 * (obj_min[2] + obj_max[2])
             # # if x or y are close to the center, go back towards the edge of the object
             # if np.abs(ee_position[0] - (obj_max[0] - obj_min[0]) / 2) < 0.08:
             #     ee_position[0] = np.random.choice([obj_min[0], obj_max[0]])
