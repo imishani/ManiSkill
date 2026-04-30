@@ -461,13 +461,15 @@ class RidgebackUR10ePlanningSolver:
                                                 n_samples,
                                                 self.planner.IK,
                                                 self.planner.check_for_collision)
-        best_score = 0
+        best_score = -np.inf
         best_grasp = None
         for p in poses_conf:
             score = self.get_antipodal_score(p[-1], pc, normals)
             if score > best_score:
                 best_score = score
                 best_grasp = p
+        if best_grasp is None:
+            return None
         base_pose = self.robot.get_pose()
         base_pose = sapien.Pose(p=base_pose.p.squeeze().cpu().numpy(),
                                 q=base_pose.q.squeeze().cpu().numpy())
