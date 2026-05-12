@@ -477,6 +477,30 @@ class RidgebackUR10ePlanningSolver:
                                 q=base_pose.q.squeeze().cpu().numpy())
         return base_pose * best_grasp[0], best_grasp[1]
 
+    def find_n_best_grasps(self,
+                        obj,
+                        n_samples: int = 50,
+                        n_grasps: int = 10
+                        ): 
+        pc, normals, aabb = self.get_pc_from_env(obj)
+        poses_conf = self.sample_grasp_ee_poses(aabb,
+                                                pc,
+                                                n_samples,
+                                                self.planner.IK,
+                                                self.planner.check_for_collision)
+        scored_grasps = []
+        for p in poses_conf:
+            score = self.get_antipodal_score(p[-1], pc, normals)
+            scored_grasps.append((score, p))
+        scored_grasps.sort(key=lambda x: x[0], reverse=True)
+        # best_grasps = scored_grasps[:n_grasps]
+        # get the top n_grasps, or if there are less than n_grasps, get all of them
+        best_grasps = scored_grasps[:min(n_grasps, len(scored_grasps))]
+        base_pose = self.robot.get_pose()
+        base_pose = sapien.Pose(p=base_pose.p.squeeze().cpu().numpy(),
+                                q=base_pose.q.squeeze().cpu().numpy())
+        return [(base_pose * g[1][0], g[1][1]) for g in best_grasps]
+
     def open_gripper(self):
         self.gripper_state = OPEN
         qpos = self.robot.get_qpos()[0, :-2].cpu().numpy()
