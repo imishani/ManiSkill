@@ -26,4 +26,4 @@ from .widowxai import *
 from .xarm import XArm7Ability
 from .xarm6 import *
 from .ridgeback_ur10e import RidgebackUR10e, StaticRidgebackUR10e
-
+from .kinova_gen3_2f85 import KinovaGen3_2F85
