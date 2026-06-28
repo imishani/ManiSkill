@@ -52,6 +52,31 @@ def _motion_result_waypoints(result):
         return None
 
 
+def _round_list(values, decimals=3):
+    try:
+        arr = np.asarray(values, dtype=np.float64).reshape(-1)
+    except Exception:
+        return []
+    return [float(x) for x in np.round(arr, int(decimals)).tolist()]
+
+
+def _motion_request_key(method, current_qpos, *, pose=None, qpose=None, extra=None):
+    parts = [str(method)]
+    parts.append("q=" + repr(_round_list(current_qpos, decimals=2)))
+    if pose is not None:
+        try:
+            p = _round_list(pose.p, decimals=3)
+            q = _round_list(pose.q, decimals=3)
+            parts.append("pose=" + repr((p, q)))
+        except Exception:
+            parts.append("pose=<unavailable>")
+    if qpose is not None:
+        parts.append("goalq=" + repr(_round_list(qpose, decimals=2)))
+    if extra is not None:
+        parts.append("extra=" + str(extra))
+    return "|".join(parts)
+
+
 OPEN = 0
 HALF_CLOSED=0.4
 CLOSED = 0.8
@@ -265,6 +290,12 @@ class RidgebackUR10ePlanningSolver:
             # )
             mplib_pose = mplib.pymp.Pose(p=pose.p, q=pose.q)
             current_qpos = self.robot.get_qpos().cpu().numpy()[0]
+            request_key = _motion_request_key(
+                "plan_pose",
+                current_qpos,
+                pose=pose,
+                extra=f"constrain={bool(constrain)}",
+            )
             constraint_function = self.make_f() if constrain else None
             constraint_jacobian = self.make_j() if constrain else None
 
@@ -288,6 +319,7 @@ class RidgebackUR10ePlanningSolver:
             perf_counter() - solve_t0,
             planning_time_s=planning_time,
             waypoint_count=_motion_result_waypoints(result),
+            request_key=request_key,
         )
         if result["status"] != "Success":
             print(result["status"])
@@ -306,6 +338,7 @@ class RidgebackUR10ePlanningSolver:
                                      refine_steps: int = 0):
         with skill_timer("UR10eMotionPlanner", "motion_request_setup"):
             current_qpos = self.robot.get_qpos().cpu().numpy()[0]
+            request_key = _motion_request_key("plan_qpos", current_qpos, qpose=qpose)
         planning_time = 1
         solve_t0 = perf_counter()
         with skill_timer("UR10eMotionPlanner", "motion_solve"):
@@ -321,6 +354,7 @@ class RidgebackUR10ePlanningSolver:
             perf_counter() - solve_t0,
             planning_time_s=planning_time,
             waypoint_count=_motion_result_waypoints(result),
+            request_key=request_key,
         )
         if result["status"] != "Success":
             print(result["status"])
@@ -343,6 +377,12 @@ class RidgebackUR10ePlanningSolver:
             pose = sapien.Pose(p=pose.p , q=pose.q)
             mplib_pose = mplib.pymp.Pose(p=pose.p, q=pose.q)
             current_qpos = self.robot.get_qpos().cpu().numpy()[0]
+            request_key = _motion_request_key(
+                "plan_screw",
+                current_qpos,
+                pose=pose,
+                extra=f"wrt_world={bool(wrt_world)}",
+            )
         solve_t0 = perf_counter()
         with skill_timer("UR10eMotionPlanner", "motion_solve"):
             result = self.planner.plan_screw(
@@ -358,6 +398,7 @@ class RidgebackUR10ePlanningSolver:
             _motion_result_status(result),
             perf_counter() - solve_t0,
             waypoint_count=_motion_result_waypoints(result),
+            request_key=request_key,
         )
         if result["status"] != "Success":
             solve_t0 = perf_counter()
