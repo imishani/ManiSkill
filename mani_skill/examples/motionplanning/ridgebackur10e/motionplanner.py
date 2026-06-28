@@ -1,4 +1,7 @@
 from typing import List
+from contextlib import nullcontext
+from time import perf_counter
+
 
 import mplib
 import numpy as np
@@ -18,6 +21,35 @@ from mani_skill.utils.geometry.trimesh_utils import get_component_mesh
 from transforms3d import quaternions, euler
 
 import open3d as o3d
+
+try:
+    from pymosaic.domains.maniskill.planning.skills.skill_timing import (
+        record_motion_planner_call,
+        skill_timer,
+    )
+except Exception:  # pragma: no cover - ManiSkill example may run standalone.
+    def skill_timer(skill_name, section_name):
+        return nullcontext()
+
+    def record_motion_planner_call(*args, **kwargs):
+        return None
+
+
+
+def _motion_result_status(result):
+    if isinstance(result, dict):
+        return str(result.get("status", "unknown"))
+    return "unknown"
+
+
+def _motion_result_waypoints(result):
+    if not isinstance(result, dict):
+        return None
+    position = result.get("position")
+    try:
+        return int(position.shape[0])
+    except Exception:
+        return None
 
 
 OPEN = 0
@@ -219,29 +251,43 @@ class RidgebackUR10ePlanningSolver:
         refine_steps: int = 0,
         constrain=False
     ):
-        pose = to_sapien_pose(pose)
-        if self.grasp_pose_visual is not None:
-            self.grasp_pose_visual.set_pose(pose)
-        pose = sapien.Pose(p=pose.p, q=pose.q)
-        # result = self.planner.plan_qpos_to_pose(
-        #     np.concatenate([pose.p, pose.q]),
-        #     self.robot.get_qpos().cpu().numpy()[0],
-        #     time_step=self.base_env.control_timestep,
-        #     use_point_cloud=self.use_point_cloud,
-        #     wrt_world=True,
-        # )
-        mplib_pose = mplib.pymp.Pose(p=pose.p, q=pose.q)
+        with skill_timer("UR10eMotionPlanner", "motion_request_setup"):
+            pose = to_sapien_pose(pose)
+            if self.grasp_pose_visual is not None:
+                self.grasp_pose_visual.set_pose(pose)
+            pose = sapien.Pose(p=pose.p, q=pose.q)
+            # result = self.planner.plan_qpos_to_pose(
+            #     np.concatenate([pose.p, pose.q]),
+            #     self.robot.get_qpos().cpu().numpy()[0],
+            #     time_step=self.base_env.control_timestep,
+            #     use_point_cloud=self.use_point_cloud,
+            #     wrt_world=True,
+            # )
+            mplib_pose = mplib.pymp.Pose(p=pose.p, q=pose.q)
+            current_qpos = self.robot.get_qpos().cpu().numpy()[0]
+            constraint_function = self.make_f() if constrain else None
+            constraint_jacobian = self.make_j() if constrain else None
 
-        result = self.planner.plan_pose(
-            mplib_pose,
-            self.robot.get_qpos().cpu().numpy()[0],
-            time_step=self.base_env.control_timestep,
-            # use_point_cloud=self.use_point_cloud,
-            wrt_world=True,
-            constraint_function=self.make_f() if constrain else None,
-            constraint_jacobian=self.make_j() if constrain else None,
-            constraint_tolerance=0.05 if constrain else 0.001,
-            planning_time=5 if constrain else 10,
+        planning_time = 5 if constrain else 10
+        solve_t0 = perf_counter()
+        with skill_timer("UR10eMotionPlanner", "motion_solve"):
+            result = self.planner.plan_pose(
+                mplib_pose,
+                current_qpos,
+                time_step=self.base_env.control_timestep,
+                # use_point_cloud=self.use_point_cloud,
+                wrt_world=True,
+                constraint_function=constraint_function,
+                constraint_jacobian=constraint_jacobian,
+                constraint_tolerance=0.05 if constrain else 0.001,
+                planning_time=planning_time,
+            )
+        record_motion_planner_call(
+            "plan_pose",
+            _motion_result_status(result),
+            perf_counter() - solve_t0,
+            planning_time_s=planning_time,
+            waypoint_count=_motion_result_waypoints(result),
         )
         if result["status"] != "Success":
             print(result["status"])
@@ -250,17 +296,31 @@ class RidgebackUR10ePlanningSolver:
         # self.render_wait()
         if dry_run:
             return result
-        return self.follow_path(result, refine_steps=refine_steps)
+        with skill_timer("UR10eMotionPlanner", "motion_result_follow"):
+            return self.follow_path(result, refine_steps=refine_steps)
 
 
     def move_to_qpose_withRRTConnect(self,
                                      qpose: List[np.ndarray],
                                      dry_run: bool = False,
                                      refine_steps: int = 0):
-        result = self.planner.plan_qpos(
-            qpose,
-            self.robot.get_qpos().cpu().numpy()[0],
-            time_step=self.base_env.control_timestep,
+        with skill_timer("UR10eMotionPlanner", "motion_request_setup"):
+            current_qpos = self.robot.get_qpos().cpu().numpy()[0]
+        planning_time = 1
+        solve_t0 = perf_counter()
+        with skill_timer("UR10eMotionPlanner", "motion_solve"):
+            result = self.planner.plan_qpos(
+                qpose,
+                current_qpos,
+                time_step=self.base_env.control_timestep,
+                planning_time=planning_time,
+            )
+        record_motion_planner_call(
+            "plan_qpos",
+            _motion_result_status(result),
+            perf_counter() - solve_t0,
+            planning_time_s=planning_time,
+            waypoint_count=_motion_result_waypoints(result),
         )
         if result["status"] != "Success":
             print(result["status"])
@@ -269,33 +329,52 @@ class RidgebackUR10ePlanningSolver:
         # self.render_wait()
         if dry_run:
             return result
-        return self.follow_path(result, refine_steps=refine_steps)
+        with skill_timer("UR10eMotionPlanner", "motion_result_follow"):
+            return self.follow_path(result, refine_steps=refine_steps)
 
     def move_to_pose_with_screw(
         self, pose: sapien.Pose, dry_run: bool = False, refine_steps: int = 0, wrt_world=True
     ):
-        pose = to_sapien_pose(pose)
-        # try screw two times before giving up
-        if self.grasp_pose_visual is not None:
-            self.grasp_pose_visual.set_pose(pose)
-        pose = sapien.Pose(p=pose.p , q=pose.q)
-        mplib_pose = mplib.pymp.Pose(p=pose.p, q=pose.q)
-        result = self.planner.plan_screw(
-            mplib_pose,
-            self.robot.get_qpos().cpu().numpy()[0],
-            time_step=self.base_env.control_timestep,
-            qpos_step=0.05,
-            # use_point_cloud=self.use_point_cloud,
-            wrt_world=wrt_world,
-        )
-        if result["status"] != "Success":
+        with skill_timer("UR10eMotionPlanner", "motion_request_setup"):
+            pose = to_sapien_pose(pose)
+            # try screw two times before giving up
+            if self.grasp_pose_visual is not None:
+                self.grasp_pose_visual.set_pose(pose)
+            pose = sapien.Pose(p=pose.p , q=pose.q)
+            mplib_pose = mplib.pymp.Pose(p=pose.p, q=pose.q)
+            current_qpos = self.robot.get_qpos().cpu().numpy()[0]
+        solve_t0 = perf_counter()
+        with skill_timer("UR10eMotionPlanner", "motion_solve"):
             result = self.planner.plan_screw(
                 mplib_pose,
-                self.robot.get_qpos().cpu().numpy()[0],
+                current_qpos,
                 time_step=self.base_env.control_timestep,
-                # use_point_cloud=self.use_point_cloud,
                 qpos_step=0.05,
+                # use_point_cloud=self.use_point_cloud,
                 wrt_world=wrt_world,
+            )
+        record_motion_planner_call(
+            "plan_screw",
+            _motion_result_status(result),
+            perf_counter() - solve_t0,
+            waypoint_count=_motion_result_waypoints(result),
+        )
+        if result["status"] != "Success":
+            solve_t0 = perf_counter()
+            with skill_timer("UR10eMotionPlanner", "motion_solve"):
+                result = self.planner.plan_screw(
+                    mplib_pose,
+                    current_qpos,
+                    time_step=self.base_env.control_timestep,
+                    # use_point_cloud=self.use_point_cloud,
+                    qpos_step=0.05,
+                    wrt_world=wrt_world,
+                )
+            record_motion_planner_call(
+                "plan_screw_retry",
+                _motion_result_status(result),
+                perf_counter() - solve_t0,
+                waypoint_count=_motion_result_waypoints(result),
             )
             if result["status"] != "Success":
                 print(result["status"])
@@ -304,7 +383,8 @@ class RidgebackUR10ePlanningSolver:
         # self.render_wait()
         if dry_run:
             return result
-        return self.follow_path(result, refine_steps=refine_steps)
+        with skill_timer("UR10eMotionPlanner", "motion_result_follow"):
+            return self.follow_path(result, refine_steps=refine_steps)
 
     def get_pc_from_env(self,
                         obj,
