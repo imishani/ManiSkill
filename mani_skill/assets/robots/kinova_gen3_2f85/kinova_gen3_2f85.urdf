@@ -496,6 +496,14 @@
     <origin rpy="0 0 0" xyz="-0.00563134 0.0 0.04718515"/>
     <!-- mimic handled by ManiSkill controller config -->
   </joint>
+
+  <link name="gen3_robotiq_85_tcp"/>
+  <joint name="gen3_robotiq_85_tcp_joint" type="fixed">
+    <parent link="gen3_robotiq_85_base_link"/>
+    <child link="gen3_robotiq_85_tcp"/>
+    <origin rpy="0 0 0" xyz="0 0 0.16"/>
+  </joint>
+
   <!-- Kinova Gen3 bracelet-with-vision camera frames. -->
   <link name="wrist_camera_link"/>
   <joint name="wrist_camera_joint" type="fixed">

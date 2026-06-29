@@ -75,7 +75,7 @@ class KinovaGen3_2F85(BaseAgent):
             "gen3_joint_6",
             "gen3_joint_7",
         ]
-        self.ee_link_name = "gen3_end_effector_link"
+        self.ee_link_name = "gen3_robotiq_85_tcp"
 
         self.arm_stiffness = 1e3
         self.arm_damping = 1e2
@@ -269,3 +269,6 @@ class KinovaGen3_2F85(BaseAgent):
         )
 
         return _deepcopy_dict(controller_configs)
+
+    def _after_init(self):
+        self.tcp = self.robot.links_map[self.ee_link_name]
