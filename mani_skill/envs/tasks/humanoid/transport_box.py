@@ -1,7 +1,7 @@
 import copy
 import os
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 import sapien
@@ -35,7 +35,7 @@ class TransportBoxEnv(BaseEnv):
     - the box is resting on top of the other table
     """
 
-    _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/UnitreeG1TransportBox-v1_rt.mp4"
+    _sample_video_link = "https://github.com/mani-skill/ManiSkill/raw/main/figures/environment_demos/UnitreeG1TransportBox-v1_rt.mp4"
     SUPPORTED_ROBOTS = ["unitree_g1_simplified_upper_body_with_head_camera"]
     agent: UnitreeG1UpperBodyWithHeadCamera
 
@@ -226,7 +226,7 @@ class TransportBoxEnv(BaseEnv):
             "facing_table_with_box": facing_table_with_box,
         }
 
-    def _get_obs_extra(self, info: Dict):
+    def _get_obs_extra(self, info: dict):
         obs = dict(
             right_tcp_pose=self.agent.right_tcp.pose.raw_pose,
             left_tcp_pose=self.agent.left_tcp.pose.raw_pose,
@@ -252,7 +252,7 @@ class TransportBoxEnv(BaseEnv):
             torch.tensor([0.165, 0.07, 0.05], device=self.device)
         )
 
-    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
+    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict):
         # Stage 1, move to face the box on the table. Succeeds if facing_table_with_box
         reward = 1 - torch.tanh((self.agent.robot.qpos[:, 0] + 1.4).abs())
 
@@ -306,6 +306,6 @@ class TransportBoxEnv(BaseEnv):
         return reward
 
     def compute_normalized_dense_reward(
-        self, obs: Any, action: torch.Tensor, info: Dict
+        self, obs: Any, action: torch.Tensor, info: dict
     ):
         return self.compute_dense_reward(obs, action, info) / 5

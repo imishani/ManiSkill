@@ -4,13 +4,12 @@ Utilities that work with the simulation / SAPIEN
 from __future__ import annotations
 
 import sys
-from typing import TYPE_CHECKING, Dict, List, Tuple, TypeVar
+from typing import TYPE_CHECKING, Tuple, TypeVar, Union
 
 import numpy as np
 import sapien
 import sapien.physx as physx
 import sapien.render
-import sapien.wrapper.urdf_loader
 import torch
 from sapien.utils import Viewer
 
@@ -19,19 +18,19 @@ from mani_skill.utils.geometry.rotation_conversions import matrix_to_quaternion
 from mani_skill.utils.structs.pose import Pose
 
 if TYPE_CHECKING:
-    from mani_skill.utils.structs.actor import Actor
     from mani_skill.sensors.camera import CameraConfig
-
-from mani_skill.utils.structs.types import Array, Device
+    from mani_skill.utils.building.mjcf_loader import MJCFLoader
+    from mani_skill.utils.building.urdf_loader import URDFLoader
+    from mani_skill.utils.structs.actor import Actor
 
 T = TypeVar("T")
 
 
-def get_obj_by_name(objs: List[T], name: str, is_unique=True):
+def get_obj_by_name(objs: list[T], name: str, is_unique=True):
     """Get a object given the name.
 
     Args:
-        objs (List[T]): objs to query. Expect these objects to have a get_name function. These may be sapien.Entity, physx.PhysxArticulationLink etc.
+        objs (list[T]): objs to query. Expect these objects to have a get_name function. These may be sapien.Entity, physx.PhysxArticulationLink etc.
         name (str): name for query.
         is_unique (bool, optional):
             whether the name should be unique. Defaults to True.
@@ -40,7 +39,7 @@ def get_obj_by_name(objs: List[T], name: str, is_unique=True):
         RuntimeError: The name is not unique when @is_unique is True.
 
     Returns:
-        T or List[T]:
+        T or list[T]:
             matched T or Ts. None if no matches.
     """
     matched_objects = [x for x in objs if x.get_name() == name]
@@ -55,15 +54,15 @@ def get_obj_by_name(objs: List[T], name: str, is_unique=True):
         return None
 
 
-def get_objs_by_names(objs: List[T], names: List[str]) -> List[T]:
+def get_objs_by_names(objs: list[T], names: list[str]) -> list[T]:
     """Get a list of objects given a list of names from a larger list of objects (objs). The returned list is in the order of the names given
 
     Args:
-        objs (List[T]): objs to query. Expect these objects to have a get_name function. These may be sapien.Entity, physx.PhysxArticulationLink etc.
+        objs (list[T]): objs to query. Expect these objects to have a get_name function. These may be sapien.Entity, physx.PhysxArticulationLink etc.
         name (str): names to query.
 
     Returns:
-        T or List[T]:
+        T or list[T]:
             matched T or Ts. None if no matches.
     """
     assert isinstance(objs, (list, tuple)), type(objs)
@@ -76,7 +75,7 @@ def get_objs_by_names(objs: List[T], names: List[str]) -> List[T]:
     return ret
 
 
-def get_obj_by_type(objs: List[T], target_type: T, is_unique=True):
+def get_obj_by_type(objs: list[T], target_type: T, is_unique=True):
     matched_objects = [x for x in objs if type(x) == target_type]
     if len(matched_objects) > 1:
         if not is_unique:
@@ -112,14 +111,14 @@ def check_urdf_config(urdf_config: dict):
                 )
 
 
-def parse_urdf_config(config_dict: dict) -> Dict:
+def parse_urdf_config(config_dict: dict) -> dict:
     """Parse config from dict for SAPIEN URDF loader.
 
     Args:
         config_dict (dict): a dict containing link physical properties.
 
     Returns:
-        Dict: urdf config passed to `sapien.URDFLoader.load`.
+        dict: urdf config passed to `sapien.URDFLoader.load`.
     """
     # urdf_config = deepcopy(config_dict)
     urdf_config = dict()
@@ -144,7 +143,7 @@ def parse_urdf_config(config_dict: dict) -> Dict:
     return urdf_config
 
 
-def apply_urdf_config(loader: sapien.wrapper.urdf_loader.URDFLoader, urdf_config: dict):
+def apply_urdf_config(loader: Union[URDFLoader, MJCFLoader], urdf_config: dict):
     if "link" in urdf_config:
         for name, link_config in urdf_config["link"].items():
             if "material" in link_config:
@@ -214,8 +213,8 @@ def get_articulation_padded_state(articulation: physx.PhysxArticulation, max_dof
 # and check if the entity is the same
 # -------------------------------------------------------------------------- #
 def get_pairwise_contacts(
-    contacts: List[physx.PhysxContact], actor0: sapien.Entity, actor1: sapien.Entity
-) -> List[Tuple[physx.PhysxContact, bool]]:
+    contacts: list[physx.PhysxContact], actor0: sapien.Entity, actor1: sapien.Entity
+) -> list[Tuple[physx.PhysxContact, bool]]:
     """
     Given a list of contacts, return the list of contacts involving the two actors
     """
@@ -229,10 +228,10 @@ def get_pairwise_contacts(
 
 
 def get_multiple_pairwise_contacts(
-    contacts: List[physx.PhysxContact],
+    contacts: list[physx.PhysxContact],
     actor0: sapien.Entity,
-    actor1_list: List[sapien.Entity],
-) -> Dict[sapien.Entity, List[Tuple[physx.PhysxContact, bool]]]:
+    actor1_list: list[sapien.Entity],
+) -> dict[sapien.Entity, list[Tuple[physx.PhysxContact, bool]]]:
     """
     Given a list of contacts, return the dict of contacts involving the one actor and actors
     This function is used to avoid double for-loop when using `get_pairwise_contacts` with multiple actors
@@ -252,7 +251,7 @@ def get_multiple_pairwise_contacts(
     return pairwise_contacts
 
 
-def compute_total_impulse(contact_infos: List[Tuple[physx.PhysxContact, bool]]):
+def compute_total_impulse(contact_infos: list[Tuple[physx.PhysxContact, bool]]):
     total_impulse = np.zeros(3)
     for contact, flag in contact_infos:
         contact_impulse = np.sum([point.impulse for point in contact.points], axis=0)
@@ -262,7 +261,7 @@ def compute_total_impulse(contact_infos: List[Tuple[physx.PhysxContact, bool]]):
 
 
 def get_pairwise_contact_impulse(
-    contacts: List[physx.PhysxContact], actor0: sapien.Entity, actor1: sapien.Entity
+    contacts: list[physx.PhysxContact], actor0: sapien.Entity, actor1: sapien.Entity
 ):
     pairwise_contacts = get_pairwise_contacts(contacts, actor0, actor1)
     total_impulse = compute_total_impulse(pairwise_contacts)
@@ -270,8 +269,8 @@ def get_pairwise_contact_impulse(
 
 
 def get_cpu_actor_contacts(
-    contacts: List[physx.PhysxContact], actor: sapien.Entity
-) -> List[Tuple[physx.PhysxContact, bool]]:
+    contacts: list[physx.PhysxContact], actor: sapien.Entity
+) -> list[Tuple[physx.PhysxContact, bool]]:
     entity_contacts = []
     for contact in contacts:
         if contact.bodies[0].entity == actor:
@@ -282,8 +281,8 @@ def get_cpu_actor_contacts(
 
 
 def get_cpu_actors_contacts(
-    contacts: List[physx.PhysxContact], actors: List[sapien.Entity]
-) -> Dict[sapien.Entity, List[Tuple[physx.PhysxContact, bool]]]:
+    contacts: list[physx.PhysxContact], actors: list[sapien.Entity]
+) -> dict[sapien.Entity, list[Tuple[physx.PhysxContact, bool]]]:
     """
     This function is used to avoid double for-loop when using `get_actor_contacts` with multiple actors
     """

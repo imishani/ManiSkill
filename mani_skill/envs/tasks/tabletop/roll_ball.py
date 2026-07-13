@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 import sapien
@@ -31,7 +31,7 @@ class RollBallEnv(BaseEnv):
     - The ball's xy position is within goal_radius (default 0.1) of the target's xy position by euclidean distance.
     """
 
-    _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/RollBall-v1_rt.mp4"
+    _sample_video_link = "https://github.com/mani-skill/ManiSkill/raw/main/figures/environment_demos/RollBall-v1_rt.mp4"
     SUPPORTED_ROBOTS = ["panda"]
 
     agent: Panda
@@ -135,7 +135,7 @@ class RollBallEnv(BaseEnv):
             "success": is_obj_placed,
         }
 
-    def _get_obs_extra(self, info: Dict):
+    def _get_obs_extra(self, info: dict):
 
         obs = dict(
             tcp_pose=self.agent.tcp.pose.raw_pose,
@@ -150,7 +150,7 @@ class RollBallEnv(BaseEnv):
             )
         return obs
 
-    def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
+    def compute_dense_reward(self, obs: Any, action: Array, info: dict):
         unit_vec = self.ball.pose.p - self.goal_region.pose.p
         unit_vec = unit_vec / torch.linalg.norm(unit_vec, axis=1, keepdim=True)
         tcp_hit_pose = Pose.create_from_pq(
@@ -176,6 +176,6 @@ class RollBallEnv(BaseEnv):
         reward[info["success"]] = 30.0
         return reward
 
-    def compute_normalized_dense_reward(self, obs: Any, action: Array, info: Dict):
+    def compute_normalized_dense_reward(self, obs: Any, action: Array, info: dict):
         max_reward = 30.0
         return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward

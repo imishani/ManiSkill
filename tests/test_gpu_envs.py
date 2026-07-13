@@ -5,6 +5,7 @@ import torch
 
 from mani_skill.agents.multi_agent import MultiAgent
 from mani_skill.envs.sapien_env import BaseEnv
+from mani_skill.utils import gym_utils
 from mani_skill.utils.structs.types import SimConfig
 from mani_skill.vector.wrappers.gymnasium import ManiSkillVectorEnv
 from tests.utils import (
@@ -16,9 +17,13 @@ from tests.utils import (
     SINGLE_ARM_STATIONARY_ROBOTS,
     STATIONARY_ENV_IDS,
     assert_isinstance,
-    assert_obs_equal,
     tree_map,
 )
+
+
+def make_vec(env_id: str, num_envs: int, env_kwargs: dict = dict()) -> ManiSkillVectorEnv:
+    env = gym.make(env_id, num_envs=num_envs, **env_kwargs)
+    return ManiSkillVectorEnv(env)
 
 
 @pytest.mark.gpu_sim
@@ -44,11 +49,10 @@ def test_envs_obs_modes(env_id, obs_mode):
         assert x.device == torch.device("cuda:0")
 
     PREPROCESSED_OBS_MODES = ["pointcloud"]
-    env = gym.make_vec(
+    env = make_vec(
         env_id,
         num_envs=16,
-        vectorization_mode="custom",
-        vector_kwargs=dict(obs_mode=obs_mode, sim_config=LOW_MEM_SIM_CONFIG),
+        env_kwargs=dict(obs_mode=obs_mode, sim_config=LOW_MEM_SIM_CONFIG),
     )
     base_env = env.base_env
     obs, _ = env.reset()
@@ -122,11 +126,10 @@ def test_envs_obs_modes(env_id, obs_mode):
 @pytest.mark.parametrize("env_id", STATIONARY_ENV_IDS)
 @pytest.mark.parametrize("control_mode", CONTROL_MODES_STATIONARY_SINGLE_ARM)
 def test_env_control_modes(env_id, control_mode):
-    env = gym.make_vec(
+    env = make_vec(
         env_id,
         num_envs=16,
-        vectorization_mode="custom",
-        vector_kwargs=dict(control_mode=control_mode, sim_config=LOW_MEM_SIM_CONFIG),
+        env_kwargs=dict(control_mode=control_mode, sim_config=LOW_MEM_SIM_CONFIG),
     )
     env.reset()
     action_space = env.action_space
@@ -140,7 +143,7 @@ def test_env_control_modes(env_id, control_mode):
 @pytest.mark.gpu_sim
 @pytest.mark.parametrize("env_id", ["PickSingleYCB-v1"])
 def test_env_reconfiguration(env_id):
-    env = gym.make_vec(env_id, num_envs=16, vectorization_mode="custom")
+    env = make_vec(env_id, num_envs=16, env_kwargs=dict())
     env.reset(options=dict(reconfigure=True))
     for _ in range(5):
         env.step(env.action_space.sample())
@@ -186,6 +189,24 @@ def test_env_reconfiguration(env_id):
 #     del env
 
 
+# Unlike the reproducibility tests above, this only checks the batch size of the episode seeds, which is
+# deterministic even though GPU sim is not.
+@pytest.mark.gpu_sim
+def test_seeded_then_unseeded_reset_keeps_episode_seed_batch_size():
+    # Regression for #1456: a scalar-seeded reset expanded the main seed with `+` (numpy broadcast, which
+    # yields num_envs-1 entries) instead of np.concatenate, so a following unseeded reset under
+    # reconfiguration shrank _episode_seed to num_envs-1.
+    num_envs = 4
+    env = gym.make(ENV_IDS[0], num_envs=num_envs, reconfiguration_freq=1)
+    base: BaseEnv = env.unwrapped
+    env.reset(seed=1)
+    assert len(base._episode_seed) == num_envs
+    env.reset()
+    assert len(base._episode_seed) == num_envs
+    env.close()
+    del env
+
+
 # def test_env_raise_value_error_for_nan_actions():
 #     env = gym.make(ENV_IDS[0])
 #     obs, _ = env.reset(seed=2000)
@@ -207,11 +228,10 @@ def test_robots(env_id, robot_uids):
         "MoveBucket-v1",
     ]:
         pytest.skip(reason=f"Env {env_id} does not support robots other than panda")
-    env = gym.make_vec(
+    env = make_vec(
         env_id,
         num_envs=16,
-        vectorization_mode="custom",
-        vector_kwargs=dict(robot_uids=robot_uids, sim_config=LOW_MEM_SIM_CONFIG),
+        env_kwargs=dict(robot_uids=robot_uids, sim_config=LOW_MEM_SIM_CONFIG),
     )
     env.reset()
     action_space = env.action_space
@@ -224,11 +244,10 @@ def test_robots(env_id, robot_uids):
 @pytest.mark.gpu_sim
 @pytest.mark.parametrize("env_id", MULTI_AGENT_ENV_IDS)
 def test_multi_agent(env_id):
-    env = gym.make_vec(
+    env = make_vec(
         env_id,
         num_envs=16,
-        vectorization_mode="custom",
-        vector_kwargs=dict(sim_config=LOW_MEM_SIM_CONFIG),
+        env_kwargs=dict(sim_config=LOW_MEM_SIM_CONFIG),
     )
     env.reset()
     action_space = env.action_space
@@ -244,11 +263,10 @@ def test_multi_agent(env_id):
 @pytest.mark.gpu_sim
 @pytest.mark.parametrize("env_id", STATIONARY_ENV_IDS[:1])
 def test_partial_resets(env_id):
-    env: ManiSkillVectorEnv = gym.make_vec(
+    env = make_vec(
         env_id,
         num_envs=16,
-        vectorization_mode="custom",
-        vector_kwargs=dict(sim_config=LOW_MEM_SIM_CONFIG),
+        env_kwargs=dict(sim_config=LOW_MEM_SIM_CONFIG),
     )
     obs, _ = env.reset()
     action_space = env.action_space
@@ -272,11 +290,10 @@ def test_partial_resets(env_id):
 @pytest.mark.gpu_sim
 def test_timelimits():
     """Test that the vec env batches the truncated variable correctly"""
-    env = gym.make_vec(
+    env = make_vec(
         "PickCube-v1",
         num_envs=16,
-        vectorization_mode="custom",
-        vector_kwargs=dict(sim_config=LOW_MEM_SIM_CONFIG),
+        env_kwargs=dict(sim_config=LOW_MEM_SIM_CONFIG),
     )
     obs, _ = env.reset()
     for _ in range(50):
@@ -289,8 +306,9 @@ def test_timelimits():
 @pytest.mark.gpu_sim
 @pytest.mark.parametrize("env_id", ["PickCube-v1"])
 def test_hidden_objs(env_id):
-    env: ManiSkillVectorEnv = gym.make_vec(
-        env_id, num_envs=16, vectorization_mode="custom"
+    env = make_vec(
+        env_id,
+        num_envs=16,
     )
     obs, _ = env.reset()
     hide_obj = env.unwrapped._hidden_objects[0]

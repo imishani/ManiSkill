@@ -1,5 +1,3 @@
-from typing import Dict
-
 import numpy as np
 import sapien
 import torch
@@ -33,7 +31,7 @@ class TableTopFreeDrawEnv(BaseEnv):
     None
     """
 
-    _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/TableTopFreeDraw-v1_rt.mp4"
+    _sample_video_link = "https://github.com/mani-skill/ManiSkill/raw/main/figures/environment_demos/TableTopFreeDraw-v1_rt.mp4"
 
     MAX_DOTS = 1010
     """
@@ -196,7 +194,7 @@ class TableTopFreeDrawEnv(BaseEnv):
     def evaluate(self):
         return {}
 
-    def _get_obs_extra(self, info: Dict):
+    def _get_obs_extra(self, info: dict):
         return dict(
             tcp_pose=self.agent.tcp.pose.raw_pose,
         )

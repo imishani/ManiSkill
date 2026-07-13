@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Dict, Union
+from typing import Union
 
 import numpy as np
 import sapien.core as sapien
@@ -36,7 +36,7 @@ class AssemblingKitsEnv(BaseEnv):
     - the misplaced shape is inserted completely into the correct slot
     """
 
-    _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/AssemblingKits-v1_rt.mp4"
+    _sample_video_link = "https://github.com/mani-skillll/ManiSkill/raw/main/figures/environment_demos/AssemblingKits-v1_rt.mp4"
 
     SUPPORTED_REWARD_MODES = ["sparse", "none"]
     SUPPORTED_ROBOTS = ["panda_wristcam"]
@@ -278,7 +278,7 @@ class AssemblingKitsEnv(BaseEnv):
             "success": pos_correct & rot_correct & in_slot,
         }
 
-    def _get_obs_extra(self, info: Dict):
+    def _get_obs_extra(self, info: dict):
         obs = dict(
             tcp_pose=self.agent.tcp.pose.raw_pose,
         )

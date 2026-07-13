@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 import numpy as np
 import sapien
@@ -106,7 +106,7 @@ class RotateSingleObjectInHand(BaseEnv):
             obj_heights.append(0.03)
         elif self.difficulty_level == 1:
             half_sizes = (self._batched_episode_rng.randn() * 0.1 + 1) * 0.04
-            self._objs: List[Actor] = []
+            self._objs: list[Actor] = []
             for i, half_size in enumerate(half_sizes):
                 builder = self.scene.create_actor_builder()
                 builder.add_box_collision(
@@ -131,7 +131,7 @@ class RotateSingleObjectInHand(BaseEnv):
                 )
             )
             model_ids = self._batched_episode_rng.choice(all_model_ids)
-            self._objs: List[Actor] = []
+            self._objs: list[Actor] = []
             for i, model_id in enumerate(model_ids):
                 builder = actors.get_actor_builder(self.scene, id=f"ycb:{model_id}")
                 builder.set_scene_idxs([i])
@@ -164,42 +164,55 @@ class RotateSingleObjectInHand(BaseEnv):
             b = len(env_idx)
             # Initialize object pose
             self.table_scene.initialize(env_idx)
-            pose = self.obj.pose
+
             new_pos = torch.randn((b, 3)) * self.obj_init_pos_noise
             # hand_init_height is robot hand position while the 0.03 is a margin to ensure
             new_pos[:, 2] = (
                 torch.abs(new_pos[:, 2]) + self.hand_init_height + self.obj_heights
             )
-            pose.raw_pose[:, 0:3] = new_pos
-            pose.raw_pose[:, 3:7] = torch.tensor([[1, 0, 0, 0]])
-            self.obj.set_pose(pose)
+
+            new_pose = torch.zeros((b, 7))
+            new_pose[:, 0:3] = new_pos
+            new_pose[:, 3:7] = torch.tensor([[1.0, 0.0, 0.0, 0.0]])
+
+            self.obj.set_pose(new_pose)
 
             # Initialize object axis
             if self.difficulty_level <= 2:
                 axis = torch.ones((b,), dtype=torch.long) * 2
             else:
                 axis = torch.randint(0, 3, (b,), dtype=torch.long)
-            self.rot_dir = F.one_hot(axis, num_classes=3)
+            if not hasattr(self, 'rot_dir'):
+                # initialize
+                self.rot_dir = F.one_hot(axis, num_classes=3)
+            else:
+                # update only env_idx entries
+                self.rot_dir[env_idx] = F.one_hot(axis, num_classes=3)
 
             # Sample a unit vector on the tangent plane of rotating axis
             vector_axis = (axis + 1) % 3
-            vector = F.one_hot(vector_axis, num_classes=3)
+            vector = F.one_hot(vector_axis, num_classes=3).float()
 
-            # Initialize task related cache
-            self.unit_vector = vector
-            self.prev_unit_vector = vector.clone()
             self.success_threshold = torch.pi * 4
-            self.cum_rotation_angle = torch.zeros((b,))
-
             # Controller parameters
             stiffness = torch.tensor(self.agent.controller.config.stiffness)
             damping = torch.tensor(self.agent.controller.config.damping)
             force_limit = torch.tensor(self.agent.controller.config.force_limit)
             self.controller_param = (
-                stiffness.expand(b, self.agent.robot.dof[0]),
-                damping.expand(b, self.agent.robot.dof[0]),
-                force_limit.expand(b, self.agent.robot.dof[0]),
+                stiffness.expand(self.num_envs, self.agent.robot.dof[0]),
+                damping.expand(self.num_envs, self.agent.robot.dof[0]),
+                force_limit.expand(self.num_envs, self.agent.robot.dof[0]),
             )
+            if not hasattr(self, 'unit_vector'):
+                # Initialize task related cache
+                self.unit_vector = vector
+                self.prev_unit_vector = vector.clone()
+                self.cum_rotation_angle = torch.zeros((b,))
+            else:
+                # update only env_idx entries
+                self.unit_vector[env_idx] = vector
+                self.prev_unit_vector[env_idx] = vector.clone()
+                self.cum_rotation_angle[env_idx] = 0.0
 
     def _initialize_agent(self, env_idx: torch.Tensor):
         with torch.device(self.device):
@@ -216,7 +229,7 @@ class RotateSingleObjectInHand(BaseEnv):
                 )
             )
 
-    def _get_obs_extra(self, info: Dict):
+    def _get_obs_extra(self, info: dict):
         with torch.device(self.device):
             obs = dict(rotate_dir=self.rot_dir)
             if self.obs_mode_struct.use_state:
@@ -283,7 +296,7 @@ class RotateSingleObjectInHand(BaseEnv):
             fail=obj_fall,
         )
 
-    def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
+    def compute_dense_reward(self, obs: Any, action: Array, info: dict):
         # 1. rotation reward
         angle = info["rotation_angle"]
         reward = 20 * angle
@@ -312,7 +325,7 @@ class RotateSingleObjectInHand(BaseEnv):
 
         return reward
 
-    def compute_normalized_dense_reward(self, obs: Any, action: Array, info: Dict):
+    def compute_normalized_dense_reward(self, obs: Any, action: Array, info: dict):
         # this should be equal to compute_dense_reward / max possible reward
         return self.compute_dense_reward(obs=obs, action=action, info=info) / 4.0
 

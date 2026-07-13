@@ -1,4 +1,4 @@
-from typing import Any, Dict, Union
+from typing import Any, Union
 
 import numpy as np
 import sapien
@@ -7,7 +7,7 @@ import torch
 from mani_skill.agents.robots import Fetch, Panda
 from mani_skill.envs.sapien_env import BaseEnv
 from mani_skill.sensors.camera import CameraConfig
-from mani_skill.utils import common, sapien_utils
+from mani_skill.utils import common, sapien_utils  # pyright: ignore[reportUnusedImport]
 from mani_skill.utils.registration import register_env
 from mani_skill.utils.structs.types import SimConfig
 
@@ -49,18 +49,18 @@ class CustomEnv(BaseEnv):
 
     def evaluate(self):
         return {
-            "success": torch.zeros(self.num_envs, device=self.device, dtype=bool),
-            "fail": torch.zeros(self.num_envs, device=self.device, dtype=bool),
+            "success": torch.zeros(self.num_envs, device=self.device, dtype=torch.bool),
+            "fail": torch.zeros(self.num_envs, device=self.device, dtype=torch.bool),
         }
 
-    def _get_obs_extra(self, info: Dict):
+    def _get_obs_extra(self, info: dict):
         return dict()
 
-    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
+    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict):
         return torch.zeros(self.num_envs, device=self.device)
 
     def compute_normalized_dense_reward(
-        self, obs: Any, action: torch.Tensor, info: Dict
+        self, obs: Any, action: torch.Tensor, info: dict
     ):
         max_reward = 1.0
         return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward

@@ -1,5 +1,4 @@
 import math
-from typing import Dict
 
 import numpy as np
 import sapien
@@ -21,7 +20,7 @@ from mani_skill.utils.structs.types import SceneConfig, SimConfig
 
 @register_env("DrawTriangle-v1", max_episode_steps=300)
 class DrawTriangleEnv(BaseEnv):
-    """
+    r"""
     **Task Description:**
     Instantiates a table with a white canvas on it and a goal triangle with an outline. A robot with a stick is to draw the triangle with a red line.
 
@@ -33,7 +32,7 @@ class DrawTriangleEnv(BaseEnv):
     - the drawn points by the robot are within a euclidean distance of 0.05m with points on the goal triangle
     """
 
-    _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/DrawTriangle-v1_rt.mp4"
+    _sample_video_link = "https://github.com/mani-skill/ManiSkill/raw/main/figures/environment_demos/DrawTriangle-v1_rt.mp4"
 
     MAX_DOTS = 300
     """
@@ -309,7 +308,7 @@ class DrawTriangleEnv(BaseEnv):
         out = self.success_check()
         return {"success": out}
 
-    def _get_obs_extra(self, info: Dict):
+    def _get_obs_extra(self, info: dict):
         obs = dict(
             tcp_pose=self.agent.tcp.pose.raw_pose,
         )

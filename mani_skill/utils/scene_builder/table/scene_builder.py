@@ -1,6 +1,5 @@
 import os.path as osp
 from pathlib import Path
-from typing import List
 
 import numpy as np
 import sapien
@@ -61,7 +60,7 @@ class TableSceneBuilder(SceneBuilder):
             # texture_file="/home/imishani/work/code/algorithms/manipulation-planning-private/scripts/planning/tests/demos/planner/motionplanning/wood_floor"
         )
         self.table = table
-        self.scene_objects: List[sapien.Entity] = [self.table, self.ground]
+        self.scene_objects: list[sapien.Entity] = [self.table, self.ground]
 
     def initialize(self, env_idx: torch.Tensor):
         # table_height = (0.9196429 * self.scale / 1.75)
@@ -325,7 +324,7 @@ class TableSceneBuilder(SceneBuilder):
             qpos = self.env.agent.keyframes["ready_to_grasp"].qpos
             self.env.agent.reset(qpos)
         elif self.env.robot_uids == "so100":
-            qpos = np.array([0, np.pi / 2, np.pi / 2, np.pi / 2, -np.pi / 2, 1.0])
+            qpos = np.array([0, 0, 0, np.pi / 2, np.pi / 2, 0])
             qpos = (
                 self.env._episode_rng.normal(
                     0, self.robot_init_qpos_noise, (b, len(qpos))

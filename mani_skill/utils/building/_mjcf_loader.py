@@ -39,14 +39,15 @@ Notes:
 import math
 import os
 import re
-import xml.etree.ElementTree as ET
 from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass
 from functools import reduce
-from typing import Any, Dict, List, Literal, Tuple, Union
+from typing import Any, Literal, Tuple, Union
 from xml.etree.ElementTree import Element
 
+import defusedxml.ElementTree as ET
+from xml.etree.ElementTree import Element
 import numpy as np
 import sapien
 from sapien import ActorBuilder, Pose
@@ -98,7 +99,7 @@ def _str_to_float(string: str, delimiter=" "):
     return res
 
 
-def _merge_attrib(default_attrib: dict, incoming_attribs: Union[List[dict], dict]):
+def _merge_attrib(default_attrib: dict, incoming_attribs: Union[list[dict], dict]):
     def helper_merge(a: dict, b: dict, path=[]):
         for key in b:
             if key in a:
@@ -199,14 +200,14 @@ class MJCFLoader:
         # self._link_min_patch_radius = dict()
         # self._link_density = dict()
 
-        self._defaults: Dict[str, Element] = dict()
+        self._defaults: dict[str, Element] = dict()
         self._assets = dict()
         self._materials = dict()
-        self._textures: Dict[str, MJCFTexture] = dict()
-        self._meshes: Dict[str, Element] = dict()
+        self._textures: dict[str, MJCFTexture] = dict()
+        self._meshes: dict[str, Element] = dict()
 
-        self._link2builder: Dict[str, LinkBuilder] = dict()
-        self._link2parent_joint: Dict[str, Any] = dict()
+        self._link2builder: dict[str, LinkBuilder] = dict()
+        self._link2parent_joint: dict[str, Any] = dict()
         self._group_count = 0
 
     def set_scene(self, scene):
@@ -596,7 +597,7 @@ class MJCFLoader:
         joints = body.findall("joint")
         # if body has no joints, it is a fixed joint
         if len(joints) == 0:
-            joints = [ET.Element("joint", attrib=dict(type="fixed"))]
+            joints = [Element("joint", attrib=dict(type="fixed"))]
         for i, joint in enumerate(joints):
             # note there can be multiple joints here. We create some dummy links to simulate that
             incoming_attributes = []
@@ -735,7 +736,7 @@ class MJCFLoader:
 
     def _parse_mjcf(
         self, mjcf_string: str
-    ) -> Tuple[List[ArticulationBuilder], List[ActorBuilder], None]:
+    ) -> Tuple[list[ArticulationBuilder], list[ActorBuilder], None]:
         """Helper function for self.parse"""
         xml: Element = ET.fromstring(mjcf_string.encode("utf-8"))
         self.xml = xml
@@ -793,8 +794,8 @@ class MJCFLoader:
 
         # NOTE (stao): For now we assume there is only one articulation. Some setups like Aloha 2 are technically 2 articulations
         # but you can treat it as a single one anyway
-        articulation_builders: List[ArticulationBuilder] = []
-        actor_builders: List[ActorBuilder] = []
+        articulation_builders: list[ArticulationBuilder] = []
+        actor_builders: list[ActorBuilder] = []
         for i, body in enumerate(xml.find("worldbody").findall("body")):
             # determine first if this body is really an articulation or a actor
             has_freejoint = body.find("freejoint") is not None
@@ -899,7 +900,7 @@ class MJCFLoader:
             mjcf_file, package_dir
         )
 
-        articulations: List[PhysxArticulation] = []
+        articulations: list[PhysxArticulation] = []
         for b in articulation_builders:
             articulations.append(b.build())
 

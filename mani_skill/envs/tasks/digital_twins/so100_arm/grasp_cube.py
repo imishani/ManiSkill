@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from typing import Any, Dict, Optional, Sequence, Union
+from typing import Any, Optional, Sequence, Union
 
 import dacite
 import numpy as np
@@ -67,7 +67,7 @@ class SO100GraspCubeEnv(BaseDigitalTwinEnv):
     - the cube is lifted, grasped, and the robot returns to a rest pose above the surface of the table
     """
 
-    # _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/PickCube-v1_rt.mp4"
+    # _sample_video_link = "https://github.com/mani-skill/ManiSkill/raw/main/figures/environment_demos/PickCube-v1_rt.mp4"
     SUPPORTED_ROBOTS = ["so100"]
     SUPPORTED_OBS_MODES = ["none", "state", "state_dict", "rgb+segmentation"]
     agent: SO100
@@ -394,7 +394,7 @@ class SO100GraspCubeEnv(BaseDigitalTwinEnv):
             obs.update(controller=controller_state)
         return obs
 
-    def _get_obs_extra(self, info: Dict):
+    def _get_obs_extra(self, info: dict):
         # we ensure that the observation data is always retrievable in the real world, using only real world
         # available data (joint positions or the controllers target joint positions in this case).
         obs = dict(
@@ -453,7 +453,7 @@ class SO100GraspCubeEnv(BaseDigitalTwinEnv):
             "success": success,
         }
 
-    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
+    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict):
         # note the info object is the data returned by the evaluate function. We can reuse information
         # to save compute time.
         # this reward function essentially has two stages, before and after grasping.
@@ -473,7 +473,7 @@ class SO100GraspCubeEnv(BaseDigitalTwinEnv):
         return reward
 
     def compute_normalized_dense_reward(
-        self, obs: Any, action: torch.Tensor, info: Dict
+        self, obs: Any, action: torch.Tensor, info: dict
     ):
         # for more stable RL we often also permit defining a noramlized reward function where you manually scale the reward down by its max value like so
         return self.compute_dense_reward(obs=obs, action=action, info=info) / 3
