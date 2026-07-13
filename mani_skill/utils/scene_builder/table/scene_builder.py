@@ -58,7 +58,7 @@ class TableSceneBuilder(SceneBuilder):
             self.scene, floor_width=floor_width, altitude=-self.table_height,
             # texture_file=osp.join(osp.dirname(__file__), "assets/floor_tiles_06_diff_2k_aligned.png")
             # texture_file="/home/imishani/work/code/ManiSkill/mani_skill/utils/building/assets/floor_tiles_06_diff_2k_aligned.png"
-            texture_file="/home/imishani/work/code/algorithms/manipulation-planning-private/scripts/planning/tests/demos/planner/motionplanning/wood_floor"
+            # texture_file="/home/imishani/work/code/algorithms/manipulation-planning-private/scripts/planning/tests/demos/planner/motionplanning/wood_floor"
         )
         self.table = table
         self.scene_objects: List[sapien.Entity] = [self.table, self.ground]
