@@ -526,7 +526,8 @@ class RidgebackUR10ePlanningSolver:
             kwargs["start_qpos"] = current_qpos
             kwargs["return_closest"] = True
             # kwargs["verbose"] = True
-            ik_succ, ik_solution = ik_solver(mplib_ee_pose, **kwargs)
+            with skill_timer("UR10eMotionPlanner", "ik"):
+                ik_succ, ik_solution = ik_solver(mplib_ee_pose, **kwargs)
             if ik_succ == "Success": # and not collision_checker(ik_solution): alreasy checks for collisions!
                 ee_samples.append((ee_pose, ik_solution))
         assert len(ee_samples) > 0, "\033[91mNo valid grasp poses found\033[0m"
@@ -541,36 +542,32 @@ class RidgebackUR10ePlanningSolver:
         self.planner.pinocchio_model.compute_forward_kinematics(robot_joint_angles)
         tcp_pose = self.planner.pinocchio_model.get_link_pose(self.planner.link_name_2_idx[self.planner.move_group])
         tcp_pose = sapien.Pose(tcp_pose.get_p(), tcp_pose.get_q())
-        # transform back to world frame
         base_pose = self.robot.get_pose()
         base_pose = sapien.Pose(p=base_pose.p.squeeze().cpu().numpy(),
                                 q=base_pose.q.squeeze().cpu().numpy())
-        tcp_pose = base_pose * tcp_pose
+        return self.get_antipodal_pose_score(base_pose * tcp_pose, pc, normals)
 
+    def get_antipodal_pose_score(self, tcp_pose: sapien.Pose, pc, normals):
+        """Score a proposed world-frame TCP pose without running IK first."""
         tcp_position = tcp_pose.get_p()
         tcp_orientation = tcp_pose.get_q()
         score = 0
-
         gripper_line_vector = np.array([0.0, 0.2, 0.0])
         tcp_ori_mat = quaternions.quat2mat(tcp_orientation)
-        gripper_line_vector = tcp_ori_mat @ gripper_line_vector #+ tcp_position
+        gripper_line_vector = tcp_ori_mat @ gripper_line_vector
         gripper_line_vector /= np.linalg.norm(gripper_line_vector)
         box = o3d.geometry.OrientedBoundingBox(tcp_position,
                                                tcp_ori_mat,
                                                np.array([0.05, 0.4, 0.05]))
-        pc = o3d.utility.Vector3dVector(pc)
-        indices = box.get_point_indices_within_bounding_box(pc)
-        if type(normals) == np.ndarray:
+        indices = box.get_point_indices_within_bounding_box(o3d.utility.Vector3dVector(pc))
+        if isinstance(normals, np.ndarray):
             normals = [x for x in normals]
-        elif type(normals) == list:
-            normals = normals
-        else:
+        elif not isinstance(normals, list):
             raise ValueError(f"Invalid type {type(normals)}")
         normals_in_grasp = np.array([normals[i] for i in indices])
         if len(normals_in_grasp) > 0:
             score = np.mean(np.abs(np.dot(normals_in_grasp, gripper_line_vector)))
         return score
-
 
 
     def find_best_grasp(self,
@@ -599,28 +596,54 @@ class RidgebackUR10ePlanningSolver:
         return base_pose * best_grasp[0], best_grasp[1]
 
     def find_n_best_grasps(self,
-                        obj,
-                        n_samples: int = 50,
-                        n_grasps: int = 10
-                        ): 
+                           obj,
+                           n_samples: int = 50,
+                           n_grasps: int = 10):
         pc, normals, aabb = self.get_pc_from_env(obj)
-        poses_conf = self.sample_grasp_ee_poses(aabb,
-                                                pc,
-                                                n_samples,
-                                                self.planner.IK,
-                                                self.planner.check_for_collision)
-        scored_grasps = []
-        for p in poses_conf:
-            score = self.get_antipodal_score(p[-1], pc, normals)
-            scored_grasps.append((score, p))
-        scored_grasps.sort(key=lambda x: x[0], reverse=True)
-        # best_grasps = scored_grasps[:n_grasps]
-        # get the top n_grasps, or if there are less than n_grasps, get all of them
-        best_grasps = scored_grasps[:min(n_grasps, len(scored_grasps))]
         base_pose = self.robot.get_pose()
         base_pose = sapien.Pose(p=base_pose.p.squeeze().cpu().numpy(),
                                 q=base_pose.q.squeeze().cpu().numpy())
-        return [(base_pose * g[1][0], g[1][1]) for g in best_grasps]
+        obj_min, obj_max = aabb[0, :], aabb[1, :]
+
+        # Preserve the random pose distribution, but rank poses before invoking
+        # MPLib IK. Previously all samples ran IK before all but ten were dropped.
+        scored_poses = []
+        for _ in range(int(max(0, n_samples))):
+            ee_position = np.random.uniform(obj_min, obj_max, size=3)
+            ee_position[2] = 0.5 * (obj_min[2] + obj_max[2])
+            ee_orientation = np.random.uniform(-np.pi, np.pi, size=3)
+            world_pose = sapien.Pose(
+                p=ee_position,
+                q=euler.euler2quat(*ee_orientation, axes="szyx"),
+            )
+            score = self.get_antipodal_pose_score(world_pose, pc, normals)
+            scored_poses.append((float(score), base_pose.inv() * world_pose))
+        scored_poses.sort(key=lambda item: item[0], reverse=True)
+
+        start_qpos = self.robot.get_qpos().cpu().numpy()[0]
+        start_qpos = np.clip(
+            start_qpos,
+            self.planner.joint_limits[:, 0],
+            self.planner.joint_limits[:, 1],
+        )
+        start_qpos = self.planner.pad_move_group_qpos(start_qpos)
+
+        grasps = []
+        for _score, ee_pose in scored_poses:
+            mplib_ee_pose = mplib.pymp.Pose(p=ee_pose.p, q=ee_pose.q)
+            with skill_timer("UR10eMotionPlanner", "ik"):
+                ik_succ, ik_solution = self.planner.IK(
+                    mplib_ee_pose,
+                    start_qpos=start_qpos,
+                    return_closest=True,
+                )
+            if ik_succ != "Success":
+                continue
+            grasps.append((base_pose * ee_pose, ik_solution))
+            if len(grasps) >= int(max(1, n_grasps)):
+                break
+        return grasps
+
 
     def open_gripper(self):
         self.gripper_state = OPEN
