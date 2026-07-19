@@ -12,7 +12,6 @@ from mani_skill.agents.controllers import (
     PDJointPosMimicControllerConfig,
     PDJointPosVelControllerConfig,
     PDJointVelControllerConfig,
-    PassiveControllerConfig,
 )
 from mani_skill.agents.registration import register_agent
 
@@ -30,16 +29,21 @@ class KinovaGen3_2F85(BaseAgent):
 
     urdf_config = dict(
         _materials=dict(
-            gripper=dict(static_friction=2.0, dynamic_friction=2.0, restitution=0.0)
+            gripper=dict(static_friction=8.0, dynamic_friction=8.0, restitution=0.0)
         ),
-        link=dict(
-            gen3_robotiq_85_left_finger_tip_link=dict(
-                material="gripper", patch_radius=0.1, min_patch_radius=0.1
-            ),
-            gen3_robotiq_85_right_finger_tip_link=dict(
-                material="gripper", patch_radius=0.1, min_patch_radius=0.1
-            ),
-        ),
+        link={
+            name: dict(material="gripper", patch_radius=0.1, min_patch_radius=0.1)
+            for name in (
+                "gen3_robotiq_85_left_knuckle_link",
+                "gen3_robotiq_85_right_knuckle_link",
+                "gen3_robotiq_85_left_finger_link",
+                "gen3_robotiq_85_right_finger_link",
+                "gen3_robotiq_85_left_inner_knuckle_link",
+                "gen3_robotiq_85_right_inner_knuckle_link",
+                "gen3_robotiq_85_left_finger_tip_link",
+                "gen3_robotiq_85_right_finger_tip_link",
+            )
+        },
     )
 
     keyframes = dict(
@@ -83,8 +87,11 @@ class KinovaGen3_2F85(BaseAgent):
 
         self.gripper_stiffness = 1e5
         self.gripper_damping = 1e3
-        self.gripper_force_limit = 0.2
-        self.gripper_friction = 0.05
+        # The default mimic-joint force/friction was too weak for sustained
+        # handle pulls in the grocery fridge scenarios. Keep this below the
+        # UR10e/Panda 100 N-style settings, but high enough for form closure.
+        self.gripper_force_limit = 50.0
+        self.gripper_friction = 4.0
 
         super().__init__(*args, **kwargs)
 
@@ -165,27 +172,39 @@ class KinovaGen3_2F85(BaseAgent):
             use_delta=True,
         )
 
-        passive_finger_joint_names = [
+        finger_joint_names = [
+            "gen3_robotiq_85_left_knuckle_joint",
+            "gen3_robotiq_85_right_knuckle_joint",
             "gen3_robotiq_85_left_inner_knuckle_joint",
             "gen3_robotiq_85_right_inner_knuckle_joint",
             "gen3_robotiq_85_left_finger_tip_joint",
             "gen3_robotiq_85_right_finger_tip_joint",
         ]
-        passive_finger_joints = PassiveControllerConfig(
-            joint_names=passive_finger_joint_names,
-            damping=0,
-            friction=0,
-        )
-
-        finger_joint_names = [
-            "gen3_robotiq_85_left_knuckle_joint",
-            "gen3_robotiq_85_right_knuckle_joint",
-        ]
 
         mimic_cfg = dict(
-            gen3_robotiq_85_left_knuckle_joint=dict(
-                joint="gen3_robotiq_85_right_knuckle_joint",
+            gen3_robotiq_85_right_knuckle_joint=dict(
+                joint="gen3_robotiq_85_left_knuckle_joint",
                 multiplier=-1.0,
+                offset=0.0,
+            ),
+            gen3_robotiq_85_left_inner_knuckle_joint=dict(
+                joint="gen3_robotiq_85_left_knuckle_joint",
+                multiplier=1.0,
+                offset=0.0,
+            ),
+            gen3_robotiq_85_right_inner_knuckle_joint=dict(
+                joint="gen3_robotiq_85_left_knuckle_joint",
+                multiplier=-1.0,
+                offset=0.0,
+            ),
+            gen3_robotiq_85_left_finger_tip_joint=dict(
+                joint="gen3_robotiq_85_left_knuckle_joint",
+                multiplier=-1.0,
+                offset=0.0,
+            ),
+            gen3_robotiq_85_right_finger_tip_joint=dict(
+                joint="gen3_robotiq_85_left_knuckle_joint",
+                multiplier=1.0,
                 offset=0.0,
             ),
         )
@@ -219,52 +238,44 @@ class KinovaGen3_2F85(BaseAgent):
             pd_joint_delta_pos=dict(
                 arm=arm_pd_joint_delta_pos,
                 finger=finger_mimic_pd_joint_delta_pos,
-                passive_finger_joints=passive_finger_joints,
             ),
             pd_joint_pos=dict(
                 arm=arm_pd_joint_pos,
                 finger=finger_mimic_pd_joint_pos,
-                passive_finger_joints=passive_finger_joints,
             ),
             pd_ee_delta_pos=dict(
                 arm=arm_pd_ee_delta_pos,
                 finger=finger_mimic_pd_joint_delta_pos,
-                passive_finger_joints=passive_finger_joints,
             ),
             pd_ee_delta_pose=dict(
                 arm=arm_pd_ee_delta_pose,
-                finger=finger_mimic_pd_joint_delta_pos,
-                passive_finger_joints=passive_finger_joints,
+                # Match UR10e 2f85 behavior: EE delta-pose arm control with
+                # absolute-position gripper control (not delta gripper control).
+                finger=finger_mimic_pd_joint_pos,
             ),
             pd_joint_target_delta_pos=dict(
                 arm=arm_pd_joint_target_delta_pos,
                 finger=finger_mimic_pd_joint_pos,
-                passive_finger_joints=passive_finger_joints,
             ),
             pd_ee_target_delta_pos=dict(
                 arm=arm_pd_ee_target_delta_pos,
                 finger=finger_mimic_pd_joint_pos,
-                passive_finger_joints=passive_finger_joints,
             ),
             pd_ee_target_delta_pose=dict(
                 arm=arm_pd_ee_target_delta_pose,
                 finger=finger_mimic_pd_joint_pos,
-                passive_finger_joints=passive_finger_joints,
             ),
             pd_joint_vel=dict(
                 arm=arm_pd_joint_vel,
                 finger=finger_mimic_pd_joint_pos,
-                passive_finger_joints=passive_finger_joints,
             ),
             pd_joint_pos_vel=dict(
                 arm=arm_pd_joint_pos_vel,
                 finger=finger_mimic_pd_joint_pos,
-                passive_finger_joints=passive_finger_joints,
             ),
             pd_joint_delta_pos_vel=dict(
                 arm=arm_pd_joint_delta_pos_vel,
                 finger=finger_mimic_pd_joint_pos,
-                passive_finger_joints=passive_finger_joints,
             ),
         )
 
