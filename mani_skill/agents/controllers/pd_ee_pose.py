@@ -83,6 +83,10 @@ class PDEEPosController(PDJointPosController):
                     self.scene._reset_mask
                 ] = self.ee_pose_at_base.raw_pose[self.scene._reset_mask]
 
+    def sync_differential_target_to_current(self):
+        """Discard accumulated differential-IK lag and hold measured joints."""
+        self._target_qpos = self.qpos.clone()
+
     def compute_target_pose(self, prev_ee_pose_at_base, action):
         # Keep the current rotation and change the position
         if self.config.use_delta:
@@ -102,7 +106,11 @@ class PDEEPosController(PDJointPosController):
         action = self._preprocess_action(action)
         self._step = 0
         self._start_qpos = self.qpos
-
+        previous_joint_target = (
+            self._target_qpos.clone()
+            if self.config.differential_joint_target and self._target_qpos is not None
+            else None
+        )
         if self.config.use_target:
             prev_ee_pose_at_base = self._target_pose
         else:
@@ -111,22 +119,40 @@ class PDEEPosController(PDJointPosController):
         # we only need to use the target pose for CPU sim or if a virtual target is enabled
         # if we have no virtual target and using the gpu sim we can directly use the given action without
         # having to recompute the new target pose based on the action delta.
-        ik_via_target_pose = self.config.use_target or not self.scene.gpu_sim_enabled
+        ik_via_target_pose = self.config.use_target or (
+            not self.scene.gpu_sim_enabled and not self.config.cpu_differential_ik
+        )
         if ik_via_target_pose:
             self._target_pose = self.compute_target_pose(prev_ee_pose_at_base, action)
         pos_only = type(self.config) == PDEEPosControllerConfig
         if pos_only:
             action = torch.hstack([action, torch.zeros(action.shape[0], 3, device=self.device)])
 
+        ik_qpos = self.articulation.get_qpos()
+        if previous_joint_target is not None and not ik_via_target_pose:
+            ik_qpos = ik_qpos.clone()
+            ik_qpos[:, self.active_joint_indices] = previous_joint_target
         self._target_qpos = self.kinematics.compute_ik(
             pose=self._target_pose if ik_via_target_pose else action,
-            q0=self.articulation.get_qpos(),
+            q0=ik_qpos,
             is_delta_pose=not ik_via_target_pose and self.config.use_delta,
             current_pose=self.ee_pose_at_base,
             solver_config=self.config.delta_solver_config,
         )
         if self._target_qpos is None:
             self._target_qpos = self._start_qpos
+        elif previous_joint_target is not None and not ik_via_target_pose:
+            lag = self._target_qpos - self._start_qpos
+            max_lag = float(self.config.max_differential_target_lag)
+            lag_scale = torch.clamp(
+                max_lag / torch.amax(torch.abs(lag), dim=-1, keepdim=True).clamp_min(1e-8),
+                max=1.0,
+            )
+            self._target_qpos = self._start_qpos + lag * lag_scale
+            limits = self.articulation.get_qlimits()[0, self.active_joint_indices]
+            self._target_qpos = torch.maximum(
+                torch.minimum(self._target_qpos, limits[:, 1]), limits[:, 0]
+            )
         if self.config.interpolate:
             self._step_size = (self._target_qpos - self._start_qpos) / self._sim_steps
         else:
@@ -184,6 +210,11 @@ class PDEEPosControllerConfig(ControllerConfig):
     """Whether to use the most recent target end-effector pose for control. If false, actions taken in a chosen frame will be taken
     relative to the instantaneous/current end-effector pose. """
     interpolate: bool = False
+    cpu_differential_ik: bool = False
+    """Use local differential IK for CPU delta-pose control."""
+    differential_joint_target: bool = False
+    """Accumulate differential IK updates as a bounded joint target."""
+    max_differential_target_lag: float = 0.25
     normalize_action: bool = True
     """Whether to normalize each action dimension into a range of [-1, 1]. Normally for most machine learning workflows this is recommended to be kept true."""
     delta_solver_config: dict = field(

@@ -14,6 +14,7 @@ except ImportError:
     raise ImportError(
         "pytorch_kinematics_ms not installed. Install with pip install pytorch_kinematics_ms"
     )
+import numpy as np
 import torch
 from lxml import etree as ET
 from sapien.wrapper.pinocchio_model import PinocchioModel
@@ -244,6 +245,26 @@ class Kinematics:
             ] * delta_joint_pos.squeeze(-1)
         else:
             q0 = q0[:, self.pmodel_active_joint_indices]
+            if is_delta_pose:
+                if isinstance(pose, Pose):
+                    raise TypeError("CPU differential IK expects a 6D delta tensor")
+                targets = []
+                controlled = self.pmodel_controlled_joint_indices.cpu().numpy()
+                for batch_idx in range(q0.shape[0]):
+                    q_np = q0[batch_idx].detach().cpu().numpy()
+                    jacobian = self.pmodel.compute_single_link_local_jacobian(
+                        q_np, self.end_link_idx
+                    )[:, controlled]
+                    delta = pose[batch_idx].detach().cpu().numpy()
+                    damping = float(solver_config.get("damping", 1e-3))
+                    lhs = jacobian @ jacobian.T + damping * np.eye(6)
+                    dq = jacobian.T @ np.linalg.solve(lhs, delta)
+                    max_delta = float(solver_config.get("max_joint_delta", 0.08))
+                    dq = np.clip(dq, -max_delta, max_delta)
+                    alpha = float(solver_config.get("alpha", 1.0))
+                    target = q_np[controlled] + alpha * dq
+                    targets.append(target.astype(q_np.dtype, copy=False))
+                return common.to_tensor(targets, device=self.device)
             result, success, error = self.pmodel.compute_inverse_kinematics(
                 self.end_link_idx,
                 pose.sp,
