@@ -4,6 +4,7 @@ from typing import List, Optional
 import hashlib
 import json
 import os
+import tempfile
 from contextlib import nullcontext
 from time import perf_counter
 
@@ -109,10 +110,10 @@ class RidgebackUR10ePlanningSolver:
         srmp_srdf_path: Optional[str] = None,
         srmp_planner_id: str = "wAstar",
         srmp_time_limit_s: Optional[float] = None,
-        srmp_point_cloud_resolution_m: Optional[float] = None,
-        srmp_search_resolution_rad: Optional[float] = None,
+        srmp_search_resolution_deg: Optional[float] = None,
         srmp_search_heuristic: Optional[str] = None,
         srmp_search_weight: Optional[float] = None,
+        srmp_num_threads: Optional[int] = None,
     ):
         self.env = env
         self.base_env: BaseEnv = env.unwrapped
@@ -138,34 +139,32 @@ class RidgebackUR10ePlanningSolver:
         if srmp_time_limit_s is None:
             srmp_time_limit_s = getattr(env, "srmp_time_limit_s", 10.0)
         self.srmp_time_limit_s = float(max(0.01, srmp_time_limit_s))
-        if srmp_point_cloud_resolution_m is None:
-            srmp_point_cloud_resolution_m = getattr(
-                env,
-                "srmp_point_cloud_resolution_m",
-                1e-4,
-            )
-        self.srmp_point_cloud_resolution_m = float(srmp_point_cloud_resolution_m)
-        if self.srmp_point_cloud_resolution_m <= 0.0:
-            raise ValueError("SRMP point-cloud resolution must be positive")
-        if srmp_search_resolution_rad is None:
-            srmp_search_resolution_rad = getattr(env, "srmp_search_resolution_rad", 0.1)
+        if srmp_search_resolution_deg is None:
+            srmp_search_resolution_deg = getattr(env, "srmp_search_resolution_deg", 1.0)
         if srmp_search_heuristic is None:
             srmp_search_heuristic = getattr(env, "srmp_search_heuristic", "bfs")
         if srmp_search_weight is None:
             srmp_search_weight = getattr(env, "srmp_search_weight", 10.0)
-        self.srmp_search_resolution_rad = float(srmp_search_resolution_rad)
+        if srmp_num_threads is None:
+            srmp_num_threads = getattr(env, "srmp_num_threads", 4)
+        self.srmp_search_resolution_deg = float(srmp_search_resolution_deg)
         self.srmp_search_heuristic = str(srmp_search_heuristic)
         self.srmp_search_weight = float(srmp_search_weight)
-        if self.srmp_search_resolution_rad <= 0.0:
+        self.srmp_num_threads = int(srmp_num_threads)
+        if self.srmp_search_resolution_deg <= 0.0:
             raise ValueError("SRMP search resolution must be positive")
         if self.srmp_search_weight < 1.0:
             raise ValueError("SRMP weighted-A* weight must be at least 1")
+        if self.srmp_num_threads <= 0:
+            raise ValueError("SRMP thread count must be positive")
         self.srmp_planner = None
         self._srmp_robot_name = "static_ridgebackur10e"
         self._last_srmp_failure_detail = None
         self._srmp_trace_path = os.environ.get("PYMOSAIC_SRMP_TRACE_PATH")
         self._srmp_attachment_state = {}
-        self._srmp_collision_cloud_key = None
+        self._srmp_collision_world_key = None
+        self._srmp_scene_object_names = []
+        self._srmp_mesh_paths = {}
         self._srmp_result_cache = {}
         self._srmp_result_cache_hits = 0
 
@@ -290,16 +289,20 @@ class RidgebackUR10ePlanningSolver:
             self._srmp_robot_name,
             srmp.Pose(p=np.asarray(self.base_pose.p), q=np.asarray(self.base_pose.q)),
         )
-        planner.make_planner(
-            [self._srmp_robot_name],
-            {
-                "planner_id": self.srmp_planner_id,
-                "heuristic": self.srmp_search_heuristic,
-                "weight": str(self.srmp_search_weight),
-                "resolution": str(self.srmp_search_resolution_rad),
-                "time_limit": str(self.srmp_time_limit_s),
-            },
-        )
+        context = {
+            "planner_id": self.srmp_planner_id,
+            "heuristic": self.srmp_search_heuristic,
+            "weight": str(self.srmp_search_weight),
+            "resolution": str(self.srmp_search_resolution_deg),
+            "time_limit": str(self.srmp_time_limit_s),
+        }
+        if self.srmp_planner_id == "wPASE":
+            context.update({
+                "i_heuristic": "joint_euclidean",
+                "i_weight": "100.0",
+                "num_threads": str(self.srmp_num_threads),
+            })
+        planner.make_planner([self._srmp_robot_name], context)
         return planner
 
     def _move_group_qpos(self, qpos) -> np.ndarray:
@@ -435,13 +438,6 @@ class RidgebackUR10ePlanningSolver:
         return detail
 
     def _srmp_collision_world_summary(self) -> dict:
-        points = np.asarray(
-            self.all_collision_pts
-            if self.all_collision_pts is not None
-            else np.empty((0, 3)),
-            dtype=np.float64,
-        )
-        point_bytes = np.ascontiguousarray(points).tobytes()
         mplib_attached = []
         try:
             world = self.planner.planning_world
@@ -453,9 +449,8 @@ class RidgebackUR10ePlanningSolver:
         except Exception:
             pass
         return {
-            "point_cloud_count": int(points.shape[0]),
-            "point_cloud_sha256": hashlib.sha256(point_bytes).hexdigest(),
-            "point_cloud_resolution_m": self.srmp_point_cloud_resolution_m,
+            "native_scene_object_count": len(self._srmp_scene_object_names),
+            "native_collision_world_key": repr(self._srmp_collision_world_key),
             "mplib_attached_objects": mplib_attached,
             "srmp_attached_objects": dict(self._srmp_attachment_state),
         }
@@ -480,12 +475,12 @@ class RidgebackUR10ePlanningSolver:
             str(goal_type),
             start_array.tobytes(),
             goal_arrays,
-            self._srmp_collision_cloud_key,
+            self._srmp_collision_world_key,
             attachment_key,
             self.srmp_planner_id,
             self.srmp_search_heuristic,
             float(self.srmp_search_weight),
-            float(self.srmp_search_resolution_rad),
+            float(self.srmp_search_resolution_deg),
             float(self.srmp_time_limit_s),
         )
 
@@ -671,7 +666,7 @@ class RidgebackUR10ePlanningSolver:
             endpoint_error = endpoint_errors[goal_index]
             endpoint_goal = valid_goals[goal_index]
             endpoint_tolerance_rad = 1e-4
-            refinement_limit_rad = self.srmp_search_resolution_rad + 1e-6
+            refinement_limit_rad = np.deg2rad(self.srmp_search_resolution_deg) + 1e-6
             endpoint_detail = {
                 "endpoint_error_rad": endpoint_error,
                 "endpoint_tolerance_rad": endpoint_tolerance_rad,
@@ -947,36 +942,112 @@ class RidgebackUR10ePlanningSolver:
                     pass
             self._srmp_attachment_state = {}
 
-    def _sync_srmp_point_cloud(self):
+    @staticmethod
+    def _srmp_pose(pose):
+        import srmp
+
+        return srmp.Pose(
+            p=np.asarray(pose.p, dtype=np.float64),
+            q=np.asarray(pose.q, dtype=np.float64),
+        )
+
+    def _clear_srmp_scene_collisions(self):
+        if self.srmp_planner is not None:
+            for name in self._srmp_scene_object_names:
+                if self.srmp_planner.has_object(name):
+                    self.srmp_planner.remove_object(name)
+        self._srmp_scene_object_names = []
+        self._srmp_collision_world_key = None
+        self._srmp_result_cache.clear()
+
+    def _srmp_convex_mesh_path(self, shape) -> str:
+        vertices = np.asarray(shape.vertices, dtype=np.float64)
+        scale = np.asarray(shape.scale, dtype=np.float64).reshape(1, 3)
+        triangles = np.asarray(shape.triangles, dtype=np.int64)
+        digest = hashlib.sha256(
+            np.ascontiguousarray(vertices * scale).tobytes()
+            + np.ascontiguousarray(triangles).tobytes()
+        ).hexdigest()
+        cached = self._srmp_mesh_paths.get(digest)
+        if cached is not None:
+            return cached
+        fd, path = tempfile.mkstemp(prefix="mosaic_srmp_collision_", suffix=".stl")
+        os.close(fd)
+        trimesh.Trimesh(
+            vertices=vertices * scale,
+            faces=triangles,
+            process=False,
+        ).export(path)
+        self._srmp_mesh_paths[digest] = path
+        return path
+
+    def set_srmp_collision_actors(self, actors, exclude_actor_ids=None):
         if self.srmp_planner is None:
             return
-        points = (
-            np.ascontiguousarray(self.all_collision_pts, dtype=np.float64)
-            if self.all_collision_pts is not None and len(self.all_collision_pts) > 0
-            else None
-        )
-        cloud_key = (
-            None
-            if points is None
-            else (
-                points.shape,
-                hashlib.sha256(points.tobytes()).hexdigest(),
-                float(self.srmp_point_cloud_resolution_m),
+        excluded = {int(value) for value in (exclude_actor_ids or [])}
+        actor_records = []
+        for wrapper in actors:
+            try:
+                scene_id = int(wrapper.per_scene_id[0])
+            except Exception:
+                scene_id = -1
+            if scene_id in excluded:
+                continue
+            try:
+                if not wrapper.get_collision_meshes(to_world_frame=True):
+                    continue
+            except TypeError:
+                if not wrapper.get_collision_meshes():
+                    continue
+            raw = wrapper._objs[0]
+            pose = raw.pose
+            actor_records.append(
+                (
+                    scene_id,
+                    tuple(np.round(np.asarray(pose.p), 9)),
+                    tuple(np.round(np.asarray(pose.q), 9)),
+                    raw,
+                )
             )
-        )
-        if cloud_key == self._srmp_collision_cloud_key:
+        world_key = tuple(record[:3] for record in actor_records)
+        if world_key == self._srmp_collision_world_key:
             return
 
-        name = "mosaic_collision_cloud"
-        if self.srmp_planner.has_object(name):
-            self.srmp_planner.remove_object(name)
-        if points is not None:
-            self.srmp_planner.add_point_cloud(
-                name,
-                points,
-                resolution=self.srmp_point_cloud_resolution_m,
-            )
-        self._srmp_collision_cloud_key = cloud_key
+        self._clear_srmp_scene_collisions()
+        for actor_index, (_, _, _, raw) in enumerate(actor_records):
+            for component in raw.get_components():
+                for shape_index, shape in enumerate(
+                    getattr(component, "collision_shapes", [])
+                ):
+                    name = f"mosaic_scene_{actor_index}_{shape_index}"
+                    pose = self._srmp_pose(raw.pose * shape.local_pose)
+                    if hasattr(shape, "half_size"):
+                        self.srmp_planner.add_box(
+                            name,
+                            2.0 * np.asarray(shape.half_size, dtype=np.float64),
+                            pose,
+                        )
+                    elif hasattr(shape, "radius") and hasattr(shape, "half_length"):
+                        self.srmp_planner.add_cylinder(
+                            name,
+                            float(shape.radius),
+                            2.0 * float(shape.half_length),
+                            pose,
+                        )
+                    elif hasattr(shape, "radius"):
+                        self.srmp_planner.add_sphere(name, float(shape.radius), pose)
+                    elif hasattr(shape, "vertices") and hasattr(shape, "triangles"):
+                        self.srmp_planner.add_mesh(
+                            name,
+                            self._srmp_convex_mesh_path(shape),
+                            pose,
+                        )
+                    else:
+                        raise TypeError(
+                            f"Unsupported SRMP collision shape: {type(shape).__name__}"
+                        )
+                    self._srmp_scene_object_names.append(name)
+        self._srmp_collision_world_key = world_key
 
     def follow_path(self, result, refine_steps: int = 0):
         n_step = result["position"].shape[0]
@@ -1559,7 +1630,6 @@ class RidgebackUR10ePlanningSolver:
         else:
             self.all_collision_pts = np.vstack([self.all_collision_pts, pts])
         self.planner.update_point_cloud(self.all_collision_pts)
-        self._sync_srmp_point_cloud()
 
     def add_collision_pts(self, pts: np.ndarray):
         if self.all_collision_pts is None:
@@ -1568,16 +1638,21 @@ class RidgebackUR10ePlanningSolver:
             self.all_collision_pts = np.vstack([self.all_collision_pts, pts])
         self.planner.remove_point_cloud()
         self.planner.update_point_cloud(self.all_collision_pts)
-        self._sync_srmp_point_cloud()
 
     def clear_collisions(self):
         self.all_collision_pts = None
         self.use_point_cloud = False
         self.planner.remove_point_cloud()
-        self._sync_srmp_point_cloud()
+        self._clear_srmp_scene_collisions()
 
     def close(self):
-        pass
+        self._clear_srmp_scene_collisions()
+        for path in self._srmp_mesh_paths.values():
+            try:
+                os.remove(path)
+            except FileNotFoundError:
+                pass
+        self._srmp_mesh_paths.clear()
 
 
 
