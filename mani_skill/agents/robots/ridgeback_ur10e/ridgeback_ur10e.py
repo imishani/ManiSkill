@@ -651,7 +651,7 @@ class StaticRidgebackUR10e(BaseAgent):
             self.arm_stiffness,
             self.arm_damping,
             self.arm_force_limit,
-            normalize_action=True,
+            normalize_action=False,
         )
         arm_pd_joint_delta_pos_vel = PDJointPosVelControllerConfig(
             self.arm_joint_names,

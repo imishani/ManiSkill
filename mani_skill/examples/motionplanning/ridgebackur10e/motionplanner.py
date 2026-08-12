@@ -108,12 +108,10 @@ class RidgebackUR10ePlanningSolver:
         joint_acc_limits=0.9,
         motion_backend: Optional[str] = None,
         srmp_srdf_path: Optional[str] = None,
-        srmp_planner_id: str = "wAstar",
         srmp_time_limit_s: Optional[float] = None,
         srmp_search_resolution_deg: Optional[float] = None,
         srmp_search_heuristic: Optional[str] = None,
         srmp_search_weight: Optional[float] = None,
-        srmp_num_threads: Optional[int] = None,
     ):
         self.env = env
         self.base_env: BaseEnv = env.unwrapped
@@ -130,33 +128,23 @@ class RidgebackUR10ePlanningSolver:
         if srmp_srdf_path is None:
             srmp_srdf_path = getattr(env, "srmp_srdf_path", None)
         self.srmp_srdf_path = srmp_srdf_path
-        self.srmp_planner_id = str(
-            getattr(env, "srmp_planner_id", srmp_planner_id)
-        )
-        self.srmp_native_pose_goal_mode = str(
-            getattr(env, "srmp_native_pose_goal_mode", "none")
-        )
+        self.srmp_planner_id = "wAstar"
         if srmp_time_limit_s is None:
-            srmp_time_limit_s = getattr(env, "srmp_time_limit_s", 10.0)
+            srmp_time_limit_s = getattr(env, "srmp_time_limit_s", 1.0)
         self.srmp_time_limit_s = float(max(0.01, srmp_time_limit_s))
         if srmp_search_resolution_deg is None:
             srmp_search_resolution_deg = getattr(env, "srmp_search_resolution_deg", 1.0)
         if srmp_search_heuristic is None:
             srmp_search_heuristic = getattr(env, "srmp_search_heuristic", "bfs")
         if srmp_search_weight is None:
-            srmp_search_weight = getattr(env, "srmp_search_weight", 10.0)
-        if srmp_num_threads is None:
-            srmp_num_threads = getattr(env, "srmp_num_threads", 4)
+            srmp_search_weight = getattr(env, "srmp_search_weight", 50.0)
         self.srmp_search_resolution_deg = float(srmp_search_resolution_deg)
         self.srmp_search_heuristic = str(srmp_search_heuristic)
         self.srmp_search_weight = float(srmp_search_weight)
-        self.srmp_num_threads = int(srmp_num_threads)
         if self.srmp_search_resolution_deg <= 0.0:
             raise ValueError("SRMP search resolution must be positive")
         if self.srmp_search_weight < 1.0:
             raise ValueError("SRMP weighted-A* weight must be at least 1")
-        if self.srmp_num_threads <= 0:
-            raise ValueError("SRMP thread count must be positive")
         self.srmp_planner = None
         self._srmp_robot_name = "static_ridgebackur10e"
         self._last_srmp_failure_detail = None
@@ -167,6 +155,9 @@ class RidgebackUR10ePlanningSolver:
         self._srmp_mesh_paths = {}
         self._srmp_result_cache = {}
         self._srmp_result_cache_hits = 0
+        self._srmp_search_ready = False
+        self._srmp_planner_context = None
+        self._srmp_batched_ik = None
 
         self.base_pose = to_sapien_pose(base_pose)
 
@@ -268,11 +259,24 @@ class RidgebackUR10ePlanningSolver:
 
         urdf_path = Path(self.env_agent.urdf_path).expanduser().resolve()
         planner = srmp.PlannerInterface(grid)
-        planner.add_robot(
+        active_joint_names = [
+            joint.get_name() for joint in self.robot.get_active_joints()
+        ]
+        non_gripper_names = set(self.env_agent.arm_joint_names) | set(
+            getattr(self.env_agent, "base_joint_names", ())
+        )
+        self._srmp_gripper_joint_names = [
+            name for name in active_joint_names if name not in non_gripper_names
+        ]
+        if not self._srmp_gripper_joint_names:
+            raise RuntimeError("SRMP robot has no active gripper joints")
+
+        self._srmp_robot_name = planner.add_robot(
             str(urdf_path),
             name=self._srmp_robot_name,
             srdf_path=str(srdf_path),
             end_effector=self.env_agent.ee_link_name,
+            gripper_joint_names=self._srmp_gripper_joint_names,
         )
 
         expected_joints = list(self.env_agent.arm_joint_names)
@@ -284,26 +288,35 @@ class RidgebackUR10ePlanningSolver:
             )
         if planner.get_move_group_qpos_dim(self._srmp_robot_name) != len(expected_joints):
             raise RuntimeError("SRMP move group does not have six controllable arm DOFs")
+        actual_gripper_joints = planner.get_gripper_joint_names(
+            self._srmp_robot_name
+        )
+        if actual_gripper_joints != self._srmp_gripper_joint_names:
+            raise RuntimeError(
+                "SRMP gripper-joint mismatch: "
+                f"expected {self._srmp_gripper_joint_names}, "
+                f"got {actual_gripper_joints}"
+            )
 
         planner.set_base_pose(
             self._srmp_robot_name,
             srmp.Pose(p=np.asarray(self.base_pose.p), q=np.asarray(self.base_pose.q)),
         )
-        context = {
+        self._srmp_planner_context = {
             "planner_id": self.srmp_planner_id,
             "heuristic": self.srmp_search_heuristic,
             "weight": str(self.srmp_search_weight),
             "resolution": str(self.srmp_search_resolution_deg),
             "time_limit": str(self.srmp_time_limit_s),
         }
-        if self.srmp_planner_id == "wPASE":
-            context.update({
-                "i_heuristic": "joint_euclidean",
-                "i_weight": "100.0",
-                "num_threads": str(self.srmp_num_threads),
-            })
-        planner.make_planner([self._srmp_robot_name], context)
         return planner
+
+    def _ensure_srmp_search_planner(self):
+        if not self._srmp_search_ready:
+            self.srmp_planner.make_planner(
+                [self._srmp_robot_name], self._srmp_planner_context
+            )
+            self._srmp_search_ready = True
 
     def _move_group_qpos(self, qpos) -> np.ndarray:
         qpos = np.asarray(qpos, dtype=np.float64).reshape(-1)
@@ -315,6 +328,32 @@ class RidgebackUR10ePlanningSolver:
                 f"Cannot map qpos with {qpos.size} values to move-group indices {indices.tolist()}"
             )
         return qpos[indices]
+
+    def _sync_srmp_gripper_qpos(self, qpos=None) -> np.ndarray:
+        active_joint_names = [
+            joint.get_name() for joint in self.robot.get_active_joints()
+        ]
+        values = np.asarray(
+            self.robot.get_qpos().cpu().numpy()[0] if qpos is None else qpos,
+            dtype=np.float64,
+        ).reshape(-1)
+        if values.size != len(active_joint_names):
+            values = np.asarray(
+                self.robot.get_qpos().cpu().numpy()[0], dtype=np.float64
+            ).reshape(-1)
+        if values.size != len(active_joint_names):
+            raise RuntimeError(
+                "Cannot map ManiSkill qpos to active joints for SRMP gripper"
+            )
+        qpos_by_name = dict(zip(active_joint_names, values))
+        gripper_qpos = np.asarray(
+            [qpos_by_name[name] for name in self._srmp_gripper_joint_names],
+            dtype=np.float64,
+        )
+        self.srmp_planner.set_gripper_qpos(
+            self._srmp_robot_name, gripper_qpos
+        )
+        return gripper_qpos
 
     def _time_parameterize_srmp_path(self, positions: np.ndarray) -> dict:
         positions = np.asarray(positions, dtype=np.float64)
@@ -450,7 +489,7 @@ class RidgebackUR10ePlanningSolver:
             pass
         return {
             "native_scene_object_count": len(self._srmp_scene_object_names),
-            "native_collision_world_key": repr(self._srmp_collision_world_key),
+            "collision_world_key": repr(self._srmp_collision_world_key),
             "mplib_attached_objects": mplib_attached,
             "srmp_attached_objects": dict(self._srmp_attachment_state),
         }
@@ -463,7 +502,9 @@ class RidgebackUR10ePlanningSolver:
         with path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(record, sort_keys=True) + "\n")
 
-    def _srmp_request_cache_key(self, start, goals, *, goal_type="joints"):
+    def _srmp_request_cache_key(
+        self, start, goals, *, goal_type="joints", gripper_qpos=None
+    ):
         start_array = np.ascontiguousarray(start, dtype=np.float64)
         goal_arrays = tuple(
             np.ascontiguousarray(goal, dtype=np.float64).tobytes() for goal in goals
@@ -475,6 +516,7 @@ class RidgebackUR10ePlanningSolver:
             str(goal_type),
             start_array.tobytes(),
             goal_arrays,
+            np.ascontiguousarray(gripper_qpos, dtype=np.float64).tobytes(),
             self._srmp_collision_world_key,
             attachment_key,
             self.srmp_planner_id,
@@ -491,6 +533,8 @@ class RidgebackUR10ePlanningSolver:
         self._last_srmp_failure_detail = None
         self._last_srmp_cache_hit = False
         start = self._move_group_qpos(current_qpos)
+        gripper_qpos = self._sync_srmp_gripper_qpos(current_qpos)
+        self._ensure_srmp_search_planner()
         goal_list = [self._move_group_qpos(goal) for goal in goals]
         cache_goals = list(goal_list)
         cache_goal_type = "joints"
@@ -508,6 +552,7 @@ class RidgebackUR10ePlanningSolver:
             start,
             cache_goals,
             goal_type=cache_goal_type,
+            gripper_qpos=gripper_qpos,
         )
         cached = self._srmp_result_cache.get(cache_key)
         if cached is not None:
@@ -651,6 +696,43 @@ class RidgebackUR10ePlanningSolver:
                 positions[-1],
                 target_pose,
             )
+            endpoint_errors = [
+                float(np.max(np.abs(goal - positions[-1]))) for goal in valid_goals
+            ]
+            endpoint_goal = valid_goals[int(np.argmin(endpoint_errors))]
+            endpoint_error = min(endpoint_errors)
+            refinement_limit_rad = np.deg2rad(self.srmp_search_resolution_deg) + 1e-6
+            endpoint_detail.update(
+                {
+                    "endpoint_error_rad": endpoint_error,
+                    "refinement_limit_rad": refinement_limit_rad,
+                }
+            )
+            if not endpoint_ok and endpoint_error <= refinement_limit_rad:
+                correction = np.linspace(
+                    positions[-1],
+                    endpoint_goal,
+                    max(1, int(np.ceil(endpoint_error / 0.01))) + 1,
+                    dtype=np.float64,
+                )[1:]
+                for qpos in correction:
+                    self.srmp_planner.set_qpos(self._srmp_robot_name, qpos)
+                    if bool(self.srmp_planner.is_state_colliding(self._srmp_robot_name)):
+                        self.srmp_planner.set_qpos(self._srmp_robot_name, start)
+                        return finish(
+                            {"status": "SRMP endpoint refinement collides"},
+                            {
+                                "reason": "endpoint_refinement_collision",
+                                **endpoint_detail,
+                            },
+                        )
+                positions = np.concatenate([positions, correction], axis=0)
+                endpoint_ok, refined_detail = self._srmp_pose_endpoint_ok(
+                    positions[-1], target_pose
+                )
+                endpoint_detail.update(refined_detail)
+                endpoint_detail["refined"] = True
+                self.srmp_planner.set_qpos(self._srmp_robot_name, start)
             if trace is not None:
                 trace["endpoint_check"] = endpoint_detail
             if not endpoint_ok:
@@ -742,114 +824,131 @@ class RidgebackUR10ePlanningSolver:
         )
 
     def _srmp_plan_pose(self, pose, current_qpos) -> dict:
-        import srmp
+        import pytorch_kinematics as pk
+        import torch
 
         started_at = perf_counter()
         self._last_srmp_failure_detail = None
-        self._last_srmp_cache_hit = False
+        pose = to_sapien_pose(pose)
         start = self._move_group_qpos(current_qpos)
-        target_p = np.asarray(pose.p, dtype=np.float64).reshape(3)
-        target_q = np.asarray(pose.q, dtype=np.float64).reshape(4)
-        q_norm = float(np.linalg.norm(target_q))
-        if not np.isfinite(q_norm) or q_norm <= 1e-12:
-            self._last_srmp_failure_detail = {"reason": "invalid_pose_quaternion"}
-            return {"status": "Invalid pose quaternion"}
-        target_q = target_q / q_norm
-        target_vector = np.concatenate([target_p, target_q])
-        cache_key = self._srmp_request_cache_key(
-            start,
-            [target_vector],
-            goal_type="pose",
+        self._sync_srmp_gripper_qpos(current_qpos)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if self._srmp_batched_ik is None:
+            with open(self.env_agent.urdf_path, "rb") as stream:
+                chain = pk.build_serial_chain_from_urdf(
+                    stream.read(),
+                    end_link_name=self.env_agent.ee_link_name,
+                    root_link_name="ur_arm_base_link",
+                ).to(dtype=torch.float32, device=device)
+            if chain.get_joint_parameter_names() != list(self.env_agent.arm_joint_names):
+                raise RuntimeError("Batched IK joint order does not match the SRMP move group")
+            limits = torch.tensor(
+                np.asarray(chain.get_joint_limits()).T,
+                dtype=torch.float32,
+                device=device,
+            )
+            self._srmp_batched_ik = pk.PseudoInverseIK(
+                chain,
+                joint_limits=limits,
+                num_retries=64,
+                max_iterations=100,
+                early_stopping_any_converged=False,
+                early_stopping_no_improvement=None,
+            )
+
+        pk_start = self._srmp_batched_ik.chain.forward_kinematics(
+            torch.tensor(start, dtype=torch.float32, device=device).unsqueeze(0)
+        ).get_matrix()[0].detach().cpu().numpy()
+        srmp_start_pose = self.srmp_planner.compute_fk(
+            self._srmp_robot_name, start
         )
-        cached = self._srmp_result_cache.get(cache_key)
-        if cached is not None:
-            self._srmp_result_cache_hits += 1
-            self._last_srmp_cache_hit = True
-            result, failure_detail = copy.deepcopy(cached)
-            self._last_srmp_failure_detail = failure_detail
-            if self._last_srmp_failure_detail is None:
-                self._last_srmp_failure_detail = {
-                    "reason": "exact_cache_hit",
-                    "cache_hit": True,
-                }
-            else:
-                self._last_srmp_failure_detail["cache_hit"] = True
-            return result
+        srmp_start = np.eye(4, dtype=np.float64)
+        srmp_start[:3, :3] = transforms3d.quaternions.quat2mat(
+            np.asarray(srmp_start_pose.q, dtype=np.float64)
+        )
+        srmp_start[:3, 3] = np.asarray(srmp_start_pose.p, dtype=np.float64)
+        world_from_pk = srmp_start @ np.linalg.inv(pk_start)
+        target_world = pose.to_transformation_matrix()
+        if hasattr(target_world, "detach"):
+            target_world = target_world.detach().cpu().numpy()
+        target_world = np.asarray(target_world).reshape(4, 4)
+        target_matrix = torch.tensor(
+            np.linalg.inv(world_from_pk) @ target_world,
+            dtype=torch.float32,
+            device=device,
+        ).unsqueeze(0)
+        ik_started_at = perf_counter()
+        solutions = self._srmp_batched_ik.solve(pk.Transform3d(matrix=target_matrix))
+        converged = solutions.converged[0].detach().cpu().numpy().astype(bool)
+        candidates = solutions.solutions[0].detach().cpu().numpy()[converged]
+        ik_duration_s = float(perf_counter() - ik_started_at)
 
-        trace = None
-        if self._srmp_trace_path:
-            trace = {
-                "backend": "srmp",
-                "planner_id": self.srmp_planner_id,
-                "goal_type": "pose",
-                "time_limit_s": self.srmp_time_limit_s,
-                "start": start.tolist(),
-                "goal_pose": {
-                    "p": target_p.tolist(),
-                    "q_wxyz": target_q.tolist(),
-                },
-                "collision_world": self._srmp_collision_world_summary(),
-            }
-
-        def finish(result, failure_detail=None):
-            if failure_detail is not None:
-                self._last_srmp_failure_detail = failure_detail
-            if _motion_result_status(result) == "Success":
-                self._srmp_result_cache[cache_key] = copy.deepcopy(
-                    (result, self._last_srmp_failure_detail)
-                )
-            if trace is not None:
-                trace["status"] = _motion_result_status(result)
-                trace["duration_s"] = float(perf_counter() - started_at)
-                trace["failure_detail"] = self._last_srmp_failure_detail
-                trace["waypoint_count"] = _motion_result_waypoints(result)
-                self._write_srmp_trace(trace)
-            return result
-
+        valid_goals = []
+        for candidate in candidates:
+            self.srmp_planner.set_qpos(self._srmp_robot_name, candidate)
+            if not self.srmp_planner.is_state_colliding(self._srmp_robot_name):
+                valid_goals.append(np.asarray(candidate, dtype=np.float64))
         self.srmp_planner.set_qpos(self._srmp_robot_name, start)
-        if bool(self.srmp_planner.is_state_colliding(self._srmp_robot_name)):
-            return finish(
-                {"status": "Invalid start state"},
-                {"reason": "invalid_start_state"},
-            )
 
-        target_pose = srmp.Pose(p=target_p, q=target_q)
+        if self._srmp_trace_path:
+            self._write_srmp_trace({
+                "backend": "srmp",
+                "goal_type": "batched_pytorch_ik",
+                "start": start.tolist(),
+                "target_pose": {
+                    "p": np.asarray(pose.p).tolist(),
+                    "q_wxyz": np.asarray(pose.q).tolist(),
+                },
+                "candidate_count": int(len(candidates)),
+                "valid_goal_count": int(len(valid_goals)),
+                "device": str(device),
+                "ik_duration_s": ik_duration_s,
+                "duration_s": float(perf_counter() - started_at),
+            })
+        if not valid_goals:
+            self._last_srmp_failure_detail = {
+                "reason": "no_collision_free_ik",
+                "candidate_count": int(len(candidates)),
+            }
+            return {"status": "SRMP found no collision-free IK goal"}
+        valid_goal = min(valid_goals, key=lambda goal: np.linalg.norm(goal - start))
+        return self._srmp_plan_qpos([valid_goal], current_qpos, target_pose=pose)
+
+    def _srmp_plan_screw(self, pose, current_qpos, *, wrt_world=True) -> dict:
+        self._last_srmp_failure_detail = None
+        pose = to_sapien_pose(pose)
+        target_pose = pose if wrt_world else self.base_pose * pose
+        start = self._move_group_qpos(current_qpos)
+        self._sync_srmp_gripper_qpos(current_qpos)
         try:
-            trajectory = self.srmp_planner.plan(
-                start,
-                srmp.GoalConstraint(srmp.GoalType.POSE, [target_pose]),
+            trajectory = self.srmp_planner.plan_screw(
+                self._srmp_robot_name,
+                self.env_agent.ee_link_name,
+                start_qpos=start,
+                end_pose=self._srmp_pose(target_pose),
+                qpos_step=0.05,
             )
+            result = self._srmp_trajectory_result(trajectory)
+            if result.get("status") != "Success":
+                return result
+            endpoint_ok, detail = self._srmp_pose_endpoint_ok(
+                np.asarray(result["position"])[-1], target_pose
+            )
+            if not endpoint_ok:
+                self._last_srmp_failure_detail = {
+                    "reason": "screw_pose_not_reached",
+                    **detail,
+                }
+                return {"status": "SRMP screw pose not reached"}
+            return result
         except RuntimeError as exc:
-            return finish(
-                {"status": f"SRMP planning error: {exc}"},
-                {"reason": "planning_error", "error": str(exc)},
-            )
-
-        positions = np.asarray(trajectory.positions, dtype=np.float64)
-        if positions.size == 0:
-            return finish(
-                {"status": "SRMP failed to find a path"},
-                {"reason": "search_failed"},
-            )
-        if positions.ndim == 1:
-            positions = positions[None, :]
-
-        endpoint_ok, endpoint_detail = self._srmp_pose_endpoint_ok(
-            positions[-1],
-            pose,
-        )
-        if trace is not None:
-            trace["endpoint_check"] = endpoint_detail
-        if not endpoint_ok:
-            return finish(
-                {"status": "SRMP pose goal not reached"},
-                {"reason": "pose_goal_not_reached", **endpoint_detail},
-            )
-
-        result = self._srmp_trajectory_result(trajectory)
-        if result.get("status") != "Success":
-            return finish(result, {"reason": "invalid_trajectory"})
-        return finish(result)
+            self._last_srmp_failure_detail = {
+                "reason": "screw_failed",
+                "error": str(exc),
+            }
+            return {"status": f"SRMP screw failed: {exc}"}
+        finally:
+            self.srmp_planner.set_qpos(self._srmp_robot_name, start)
 
     def attach_mesh(self, mesh_path, relative_pose) -> Optional[str]:
         """Attach one carried collision mesh to the TCP in every active backend."""
@@ -882,24 +981,39 @@ class RidgebackUR10ePlanningSolver:
                 self._srmp_robot_name,
                 self._move_group_qpos(current_qpos),
             )
-            link_name = self.env_agent.ee_link_name
+            # SRMP attaches geometry at the link origin and has no attachment-
+            # offset argument. Bake object-in-link into the mesh itself.
+            tcp_link_name = self.env_agent.ee_link_name
+            tcp_pose = self.srmp_planner.get_link_pose(
+                self._srmp_robot_name,
+                tcp_link_name,
+            )
+            link_name = "robotiq_arg2f_base_link"
             link_id = self.srmp_planner.get_link_index(
                 self._srmp_robot_name,
                 link_name,
             )
+            object_in_tcp = srmp.Pose(
+                p=np.asarray(relative_pose.p, dtype=np.float64),
+                q=np.asarray(relative_pose.q, dtype=np.float64),
+            )
+            object_world = tcp_pose * object_in_tcp
             link_pose = self.srmp_planner.get_link_pose(
                 self._srmp_robot_name,
                 link_name,
             )
-            object_in_link = srmp.Pose(
-                p=np.asarray(relative_pose.p, dtype=np.float64),
-                q=np.asarray(relative_pose.q, dtype=np.float64),
+            object_in_link = (
+                np.linalg.inv(link_pose.to_transformation_matrix())
+                @ object_world.to_transformation_matrix()
             )
-            object_world = link_pose * object_in_link
+            attached_mesh_path = self._srmp_transformed_mesh_path(
+                mesh_path,
+                object_in_link,
+            )
             self.srmp_planner.add_mesh(
                 srmp_name,
-                str(mesh_path),
-                pose=object_world,
+                attached_mesh_path,
+                pose=link_pose,
             )
             self.srmp_planner.attach_object(
                 srmp_name,
@@ -911,7 +1025,7 @@ class RidgebackUR10ePlanningSolver:
                 srmp_name: {
                     "link_name": link_name,
                     "link_id": int(link_id),
-                    "mesh_path": str(mesh_path),
+                    "mesh_path": attached_mesh_path,
                     "relative_pose": {
                         "p": np.asarray(relative_pose.p, dtype=np.float64).tolist(),
                         "q": np.asarray(relative_pose.q, dtype=np.float64).tolist(),
@@ -919,6 +1033,24 @@ class RidgebackUR10ePlanningSolver:
                 }
             }
         return mplib_name
+
+    def _srmp_transformed_mesh_path(self, mesh_path, transform: np.ndarray) -> str:
+        mesh = trimesh.load_mesh(str(mesh_path), process=False)
+        transform = np.asarray(transform, dtype=np.float64).reshape(4, 4)
+        digest = hashlib.sha256(
+            np.ascontiguousarray(mesh.vertices).tobytes()
+            + np.ascontiguousarray(mesh.faces).tobytes()
+            + transform.tobytes()
+        ).hexdigest()
+        cached = self._srmp_mesh_paths.get(digest)
+        if cached is not None:
+            return cached
+        mesh.apply_transform(transform)
+        fd, path = tempfile.mkstemp(prefix="mosaic_srmp_attached_", suffix=".stl")
+        os.close(fd)
+        mesh.export(path)
+        self._srmp_mesh_paths[digest] = path
+        return path
 
     def detach_attached_mesh(self, mplib_name: Optional[str] = None) -> None:
         """Detach carried geometry from every active backend."""
@@ -960,27 +1092,6 @@ class RidgebackUR10ePlanningSolver:
         self._srmp_collision_world_key = None
         self._srmp_result_cache.clear()
 
-    def _srmp_convex_mesh_path(self, shape) -> str:
-        vertices = np.asarray(shape.vertices, dtype=np.float64)
-        scale = np.asarray(shape.scale, dtype=np.float64).reshape(1, 3)
-        triangles = np.asarray(shape.triangles, dtype=np.int64)
-        digest = hashlib.sha256(
-            np.ascontiguousarray(vertices * scale).tobytes()
-            + np.ascontiguousarray(triangles).tobytes()
-        ).hexdigest()
-        cached = self._srmp_mesh_paths.get(digest)
-        if cached is not None:
-            return cached
-        fd, path = tempfile.mkstemp(prefix="mosaic_srmp_collision_", suffix=".stl")
-        os.close(fd)
-        trimesh.Trimesh(
-            vertices=vertices * scale,
-            faces=triangles,
-            process=False,
-        ).export(path)
-        self._srmp_mesh_paths[digest] = path
-        return path
-
     def set_srmp_collision_actors(self, actors, exclude_actor_ids=None):
         if self.srmp_planner is None:
             return
@@ -1014,39 +1125,22 @@ class RidgebackUR10ePlanningSolver:
             return
 
         self._clear_srmp_scene_collisions()
-        for actor_index, (_, _, _, raw) in enumerate(actor_records):
-            for component in raw.get_components():
-                for shape_index, shape in enumerate(
-                    getattr(component, "collision_shapes", [])
-                ):
-                    name = f"mosaic_scene_{actor_index}_{shape_index}"
-                    pose = self._srmp_pose(raw.pose * shape.local_pose)
-                    if hasattr(shape, "half_size"):
-                        self.srmp_planner.add_box(
-                            name,
-                            2.0 * np.asarray(shape.half_size, dtype=np.float64),
-                            pose,
-                        )
-                    elif hasattr(shape, "radius") and hasattr(shape, "half_length"):
-                        self.srmp_planner.add_cylinder(
-                            name,
-                            float(shape.radius),
-                            2.0 * float(shape.half_length),
-                            pose,
-                        )
-                    elif hasattr(shape, "radius"):
-                        self.srmp_planner.add_sphere(name, float(shape.radius), pose)
-                    elif hasattr(shape, "vertices") and hasattr(shape, "triangles"):
-                        self.srmp_planner.add_mesh(
-                            name,
-                            self._srmp_convex_mesh_path(shape),
-                            pose,
-                        )
-                    else:
-                        raise TypeError(
-                            f"Unsupported SRMP collision shape: {type(shape).__name__}"
-                        )
-                    self._srmp_scene_object_names.append(name)
+        raw_actors = []
+        for _, _, _, raw in actor_records:
+            shapes = [
+                shape
+                for component in raw.get_components()
+                for shape in getattr(component, "collision_shapes", [])
+            ]
+            if any(type(shape).__name__ == "PhysxCollisionShapePlane" for shape in shapes):
+                continue
+            raw_actors.append(raw)
+        before = set(self.srmp_planner.get_object_names())
+        scene = type("SRMPActorScene", (), {"get_all_actors": lambda _self: raw_actors})()
+        self.srmp_planner.read_sim(scene, "sapien")
+        self._srmp_scene_object_names = sorted(
+            set(self.srmp_planner.get_object_names()) - before
+        )
         self._srmp_collision_world_key = world_key
 
     def follow_path(self, result, refine_steps: int = 0):
@@ -1320,22 +1414,33 @@ class RidgebackUR10ePlanningSolver:
             )
         solve_t0 = perf_counter()
         with skill_timer("UR10eMotionPlanner", "motion_solve"):
-            result = self.planner.plan_screw(
-                mplib_pose,
-                current_qpos,
-                time_step=self.base_env.control_timestep,
-                qpos_step=0.05,
-                # use_point_cloud=self.use_point_cloud,
-                wrt_world=wrt_world,
-            )
+            if self.motion_backend == "srmp":
+                result = self._srmp_plan_screw(
+                    pose, current_qpos, wrt_world=wrt_world
+                )
+                planner_method = "srmp_plan_screw"
+            else:
+                result = self.planner.plan_screw(
+                    mplib_pose,
+                    current_qpos,
+                    time_step=self.base_env.control_timestep,
+                    qpos_step=0.05,
+                    wrt_world=wrt_world,
+                )
+                planner_method = "plan_screw"
         record_motion_planner_call(
-            "plan_screw",
+            planner_method,
             _motion_result_status(result),
             perf_counter() - solve_t0,
             waypoint_count=_motion_result_waypoints(result),
             request_key=request_key,
+            diagnostic=(
+                self._last_srmp_failure_detail
+                if planner_method.startswith("srmp_")
+                else None
+            ),
         )
-        if result["status"] != "Success":
+        if result["status"] != "Success" and self.motion_backend != "srmp":
             solve_t0 = perf_counter()
             with skill_timer("UR10eMotionPlanner", "motion_solve"):
                 result = self.planner.plan_screw(
@@ -1356,6 +1461,9 @@ class RidgebackUR10ePlanningSolver:
                 print(result["status"])
                 # self.render_wait()
                 return -1
+        elif result["status"] != "Success":
+            print(result["status"])
+            return -1
         # self.render_wait()
         if dry_run:
             return result
@@ -1647,6 +1755,7 @@ class RidgebackUR10ePlanningSolver:
 
     def close(self):
         self._clear_srmp_scene_collisions()
+        self.srmp_planner = None
         for path in self._srmp_mesh_paths.values():
             try:
                 os.remove(path)
