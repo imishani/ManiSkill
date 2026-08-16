@@ -1085,9 +1085,16 @@ class RidgebackUR10ePlanningSolver:
 
     def _clear_srmp_scene_collisions(self):
         if self.srmp_planner is not None:
-            for name in self._srmp_scene_object_names:
-                if self.srmp_planner.has_object(name):
-                    self.srmp_planner.remove_object(name)
+            if self._srmp_search_ready:
+                # SRMP bakes the collision world into its search planner. Rebuild
+                # the native interface rather than reusing that stale state.
+                self.srmp_planner = self.setup_srmp_planner()
+                self._srmp_search_ready = False
+                self._srmp_attachment_state = {}
+            else:
+                for name in self._srmp_scene_object_names:
+                    if self.srmp_planner.has_object(name):
+                        self.srmp_planner.remove_object(name)
         self._srmp_scene_object_names = []
         self._srmp_collision_world_key = None
         self._srmp_result_cache.clear()
@@ -1754,6 +1761,8 @@ class RidgebackUR10ePlanningSolver:
         self._clear_srmp_scene_collisions()
 
     def close(self):
+        # Closing discards the native interface, so rebuilding it is unnecessary.
+        self._srmp_search_ready = False
         self._clear_srmp_scene_collisions()
         self.srmp_planner = None
         for path in self._srmp_mesh_paths.values():
