@@ -627,6 +627,35 @@ class RidgebackUR10ePlanningSolver:
                 },
             )
 
+        # SRMP's lattice cannot expand configurations effectively on a joint
+        # limit.  Enter the lattice through a short, collision-checked bridge.
+        joint_limits = np.asarray(
+            self.srmp_planner.get_move_group_joint_limits(self._srmp_robot_name),
+            dtype=np.float64,
+        )
+        lattice_margin = 0.5 * np.deg2rad(self.srmp_search_resolution_deg)
+        search_start = np.clip(
+            start,
+            joint_limits[:, 0] + lattice_margin,
+            joint_limits[:, 1] - lattice_margin,
+        )
+        start_bridge = None
+        if not np.allclose(search_start, start, atol=1e-12, rtol=0.0):
+            bridge_steps = max(
+                1, int(np.ceil(np.max(np.abs(search_start - start)) / 0.002))
+            )
+            start_bridge = np.linspace(start, search_start, bridge_steps + 1)
+            for qpos in start_bridge[1:]:
+                self.srmp_planner.set_qpos(self._srmp_robot_name, qpos)
+                if bool(self.srmp_planner.is_state_colliding(self._srmp_robot_name)):
+                    self.srmp_planner.set_qpos(self._srmp_robot_name, start)
+                    return finish(
+                        {"status": "Invalid start state"},
+                        {"reason": "joint_limit_start_bridge_collision"},
+                    )
+            if trace is not None:
+                trace["srmp_start"]["search_start"] = search_start.tolist()
+
         valid_goals = []
         invalid_details = []
         for goal in goal_list:
@@ -664,7 +693,7 @@ class RidgebackUR10ePlanningSolver:
 
         try:
             trajectory = self.srmp_planner.plan(
-                start,
+                search_start,
                 srmp.GoalConstraint(srmp.GoalType.JOINTS, valid_goals),
             )
         except RuntimeError as exc:
@@ -691,6 +720,8 @@ class RidgebackUR10ePlanningSolver:
             )
         if positions.ndim == 1:
             positions = positions[None, :]
+        if start_bridge is not None:
+            positions = np.concatenate([start_bridge[:-1], positions], axis=0)
         if target_pose is not None:
             endpoint_ok, endpoint_detail = self._srmp_pose_endpoint_ok(
                 positions[-1],
