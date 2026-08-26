@@ -1175,7 +1175,27 @@ class RidgebackUR10ePlanningSolver:
             raw_actors.append(raw)
         before = set(self.srmp_planner.get_object_names())
         scene = type("SRMPActorScene", (), {"get_all_actors": lambda _self: raw_actors})()
-        self.srmp_planner.read_sim(scene, "sapien")
+        imported = self.srmp_planner.read_sim(scene, "sapien")
+        cylinder_axis_fix = sapien.Pose(
+            q=transforms3d.euler.euler2quat(0.0, np.pi / 2.0, 0.0)
+        )
+        for raw, object_names in zip(raw_actors, imported.values()):
+            shapes = [
+                shape
+                for component in raw.get_components()
+                for shape in getattr(component, "collision_shapes", [])
+            ]
+            for shape, object_name in zip(shapes, object_names):
+                if not isinstance(shape, physx.PhysxCollisionShapeCylinder):
+                    continue
+                self.srmp_planner.remove_object(object_name)
+                pose = raw.pose * shape.local_pose * cylinder_axis_fix
+                self.srmp_planner.add_cylinder(
+                    object_name,
+                    float(shape.radius),
+                    2.0 * float(shape.half_length),
+                    self._srmp_pose(pose),
+                )
         self._srmp_scene_object_names = sorted(
             set(self.srmp_planner.get_object_names()) - before
         )
