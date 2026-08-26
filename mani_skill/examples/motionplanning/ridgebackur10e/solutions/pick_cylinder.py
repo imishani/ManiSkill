@@ -89,10 +89,10 @@ def solve(env: PickBlockEnv,
     initial_qpose = planner.get_curr_qpose()
 
 
-    if planner.move_to_pose_with_RRTConnect(reach_pose, refine_steps=10) == -1:
+    if planner.move_to_pose(reach_pose, refine_steps=10) == -1:
         # try to rotate by 180 degrees around z
         reach_pose = reach_pose * sapien.Pose(q=[0, 0, np.sin(np.pi), np.cos(np.pi)])
-        if planner.move_to_pose_with_RRTConnect(reach_pose, refine_steps=10) == -1:
+        if planner.move_to_pose(reach_pose, refine_steps=10) == -1:
             planner.close()
             return -1
         else:
@@ -161,8 +161,8 @@ def solve(env: PickBlockEnv,
     # goal_pose = sapien.Pose(env.goal_site.pose.sp.p)
 
 
-    # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=True)
-    # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=False)
+    # res = planner.move_to_pose(goal_pose, constrain=True)
+    # res = planner.move_to_pose(goal_pose, constrain=False)
     res = planner.move_to_pose_with_screw(goal_pose)
     if res == -1:
         print("Failed move to goal")
@@ -197,6 +197,6 @@ def solve(env: PickBlockEnv,
         else:
             ptc_array = np.concatenate([ptc_array, np.array(ptc)])
     planner.add_collision_pts(ptc_array)
-    planner.move_to_qpose_withRRTConnect([initial_qpose])
+    planner.move_to_qpose([initial_qpose])
     planner.close()
     return res

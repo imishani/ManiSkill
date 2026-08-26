@@ -108,10 +108,10 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
 
     planner.control_gripper(gripper_state=OPEN)
 
-    if planner.move_to_pose_with_RRTConnect(reach_pose, refine_steps=10) == -1:
+    if planner.move_to_pose(reach_pose, refine_steps=10) == -1:
         # try to rotate by 180 degrees around z
         reach_pose = reach_pose * sapien.Pose(q=[0, 0, np.sin(np.pi), np.cos(np.pi)])
-        if planner.move_to_pose_with_RRTConnect(reach_pose, refine_steps=10) == -1:
+        if planner.move_to_pose(reach_pose, refine_steps=10) == -1:
             planner.close()
             return -1
         else:
@@ -180,8 +180,8 @@ def solve(env: PickSingleKitchenYCBEnv | PickHeavyClutterYCBEnv | PickCubeEnv | 
     goal_pose = sapien.Pose(env.goal_site.pose.sp.p)
 
 
-    # res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=True)
-    res = planner.move_to_pose_with_RRTConnect(goal_pose, constrain=False)
+    # res = planner.move_to_pose(goal_pose, constrain=True)
+    res = planner.move_to_pose(goal_pose, constrain=False)
     # res = planner.move_to_pose_with_screw(goal_pose)
     if res == -1:
         planner.close()

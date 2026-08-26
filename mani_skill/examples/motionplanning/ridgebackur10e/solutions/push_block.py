@@ -58,7 +58,7 @@ def solve(env: PushBlockEnv, seed=None, debug=False, vis=False):
     planner.add_collision_pts(ptc_array)
 
     # planner.set_robot_pose(reach_pose)
-    # planner.move_to_pose_with_RRTConnect(reach_pose)
+    # planner.move_to_pose(reach_pose)
     pre_reach_pose = reach_pose * sapien.Pose(p=np.array([0, 0, 0.03]))
     if planner.move_to_pose_with_screw(pre_reach_pose) == -1:
         planner.close()

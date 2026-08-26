@@ -1283,7 +1283,7 @@ class RidgebackUR10ePlanningSolver:
             return -1
 
 
-    def move_to_pose_with_RRTConnect(
+    def move_to_pose(
         self, pose: sapien.Pose, 
         dry_run: bool = False,
         refine_steps: int = 0,
@@ -1374,7 +1374,7 @@ class RidgebackUR10ePlanningSolver:
             return self.follow_path(result, refine_steps=refine_steps)
 
 
-    def move_to_qpose_withRRTConnect(self,
+    def move_to_qpose(self,
                                      qpose: List[np.ndarray],
                                      dry_run: bool = False,
                                      refine_steps: int = 0):
