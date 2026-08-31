@@ -24,6 +24,9 @@ def get_component_meshes(component: physx.PhysxRigidBaseComponent):
             mesh = trimesh.creation.cylinder(
                 radius=geom.radius, height=2 * geom.half_length
             )
+            mesh.apply_transform(
+                trimesh.transformations.rotation_matrix(np.pi / 2, [0, 1, 0])
+            )
         elif isinstance(geom, physx.PhysxCollisionShapeSphere):
             mesh = trimesh.creation.icosphere(radius=geom.radius)
         elif isinstance(geom, physx.PhysxCollisionShapePlane):
