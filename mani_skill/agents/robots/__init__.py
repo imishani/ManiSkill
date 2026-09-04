@@ -17,6 +17,7 @@ from .inspire_hand import (
 from .koch import *
 from .panda import *
 from .so100 import *
+from .so107 import *
 from .trifingerpro import TriFingerPro
 from .unitree_g1 import *
 from .unitree_go import *

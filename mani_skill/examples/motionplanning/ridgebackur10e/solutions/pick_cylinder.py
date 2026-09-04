@@ -11,7 +11,7 @@ from transforms3d.euler import euler2quat
 from mani_skill.envs.tasks import PickBlockEnv
 from mani_skill.examples.motionplanning.ridgebackur10e.motionplanner import \
     RidgebackUR10ePlanningSolver, CLOSED, OPEN
-from mani_skill.examples.motionplanning.panda.utils import (
+from mani_skill.examples.motionplanning.base_motionplanner.utils import (
     compute_grasp_info_by_obb, get_actor_obb)
 from mani_skill.utils.common import quat_diff_rad
 from mani_skill.utils.geometry.rotation_conversions import quaternion_to_matrix
