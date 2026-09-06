@@ -1,5 +1,5 @@
 from dataclasses import asdict, dataclass
-from typing import List, Optional, Union
+from typing import Optional, Union
 
 import dacite
 import gymnasium as gym
@@ -43,7 +43,7 @@ class CachedResetWrapper(gym.Wrapper):
         # setup config
         self.num_envs = self.base_env.num_envs
         if isinstance(config, CachedResetsConfig):
-            config = config.asdict()
+            config = asdict(config)
         self.cached_resets_config = dacite.from_dict(
             data_class=CachedResetsConfig,
             data=config,
@@ -58,7 +58,7 @@ class CachedResetWrapper(gym.Wrapper):
         if reset_to_env_states is not None:
             self._cached_resets_env_states = reset_to_env_states["env_states"]
             self._cached_resets_obs_buffer = reset_to_env_states.get("obs", None)
-            self._num_cached_resets = len(self._cached_resets_env_states)
+            self._num_cached_resets = tree.shape(self._cached_resets_env_states, first_only=True)[0]
         else:
             if self.cached_resets_config.num_resets is None:
                 self.cached_resets_config.num_resets = self.num_envs
@@ -66,7 +66,9 @@ class CachedResetWrapper(gym.Wrapper):
             self._cached_resets_obs_buffer = []
             while self._num_cached_resets < self.cached_resets_config.num_resets:
                 obs, _ = self.env.reset(
-                    seed=self.cached_resets_config.seed if self._num_cached_resets == 0 else None,
+                    seed=self.cached_resets_config.seed
+                    if self._num_cached_resets == 0
+                    else None,
                     options=dict(
                         env_idx=torch.arange(
                             0,
@@ -125,7 +127,7 @@ class CachedResetWrapper(gym.Wrapper):
     def reset(
         self,
         *args,
-        seed: Optional[Union[int, List[int]]] = None,
+        seed: Optional[Union[int, list[int]]] = None,
         options: Optional[dict] = None,
         **kwargs
     ):

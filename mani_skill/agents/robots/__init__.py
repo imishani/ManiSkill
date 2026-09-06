@@ -1,7 +1,9 @@
+# pyright: reportUnusedImport=false
 from .allegro_hand import *
 from .anymal import ANYmalC
 from .dclaw import DClaw
 from .fetch import Fetch
+from .floating_ability_hand import FloatingAbilityHandRight
 from .floating_panda_gripper import FloatingPandaGripper
 from .floating_robotiq_2f_85_gripper import *
 from .googlerobot import *
@@ -15,7 +17,7 @@ from .inspire_hand import (
 from .koch import *
 from .panda import *
 from .so100 import *
-from .stompy import Stompy
+from .so107 import *
 from .trifingerpro import TriFingerPro
 from .unitree_g1 import *
 from .unitree_go import *
@@ -25,5 +27,6 @@ from .widowx import *
 from .widowxai import *
 from .xarm import XArm7Ability
 from .xarm6 import *
+from .xlerobot import *
 from .ridgeback_ur10e import RidgebackUR10e, StaticRidgebackUR10e
 from .kinova_gen3_2f85 import KinovaGen3_2F85

@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict
+from typing import Any
 
 import torch
 
@@ -36,13 +36,13 @@ class BaseSensor:
         """
         raise NotImplementedError()
 
-    def get_params(self) -> Dict:
+    def get_params(self) -> dict:
         """
         Get parameters for this sensor. Should return a dictionary with keys mapping to torch.Tensor values
         """
         raise NotImplementedError()
 
-    def get_images(self) -> torch.Tensor:
+    def get_images(self, obs: Any) -> torch.Tensor:
         """
         This returns the data of the sensor visualized as an image (rgb array of shape (B, H, W, 3)). This should not be used for generating agent observations. For example lidar data can be visualized
         as an image but should not be in a image format (H, W, 3) when being used by an agent.

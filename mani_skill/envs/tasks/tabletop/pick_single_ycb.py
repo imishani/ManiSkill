@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union
+from typing import Any, Union
 
 import numpy as np
 import sapien
@@ -48,7 +48,7 @@ class PickSingleYCBEnv(BaseEnv):
     - On GPU simulation, in order to collect data from every possible object in the YCB database we recommend using at least 128 parallel environments or more, otherwise you will need to reconfigure in order to sample new objects.
     """
 
-    _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/PickSingleYCB-v1_rt.mp4"
+    _sample_video_link = "https://github.com/mani-skill/ManiSkill/raw/main/figures/environment_demos/PickSingleYCB-v1_rt.mp4"
 
     SUPPORTED_ROBOTS = ["panda", "panda_wristcam", "fetch", "ridgebackur10e", "static_ridgebackur10e"]
     agent: Union[Panda, PandaWristCam, Fetch, RidgebackUR10e, StaticRidgebackUR10e]
@@ -138,7 +138,7 @@ class PickSingleYCBEnv(BaseEnv):
                 or set reconfiguration_freq to be >= 1."""
             )
 
-        self._objs: List[Actor] = []
+        self._objs: list[Actor] = []
         self.obj_heights = []
         for i, model_id in enumerate(model_ids):
             # TODO: before official release we will finalize a metadata dataclass that these build functions should return.
@@ -217,7 +217,7 @@ class PickSingleYCBEnv(BaseEnv):
             success=is_obj_placed,
         )
 
-    def _get_obs_extra(self, info: Dict):
+    def _get_obs_extra(self, info: dict):
         obs = dict(
             tcp_pose=self.agent.tcp.pose.raw_pose,
             goal_pos=self.goal_site.pose.p,
@@ -232,7 +232,7 @@ class PickSingleYCBEnv(BaseEnv):
             )
         return obs
 
-    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: Dict):
+    def compute_dense_reward(self, obs: Any, action: torch.Tensor, info: dict):
         tcp_to_obj_dist = torch.linalg.norm(
             self.obj.pose.p - self.agent.tcp.pose.p, axis=1
         )
@@ -259,7 +259,7 @@ class PickSingleYCBEnv(BaseEnv):
         return reward
 
     def compute_normalized_dense_reward(
-        self, obs: Any, action: torch.Tensor, info: Dict
+        self, obs: Any, action: torch.Tensor, info: dict
     ):
         return self.compute_dense_reward(obs=obs, action=action, info=info) / 6
 
