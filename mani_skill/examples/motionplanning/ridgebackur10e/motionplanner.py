@@ -125,6 +125,8 @@ class RidgebackUR10ePlanningSolver:
         self.motion_backend = str(motion_backend).lower()
         if self.motion_backend not in {"mplib", "srmp"}:
             raise ValueError(f"Unsupported motion backend: {self.motion_backend!r}")
+        if self.motion_backend == "srmp" and self.env_agent.uid == "so107":
+            self.joint_vel_limits = min(float(self.joint_vel_limits), 0.2)
         if srmp_srdf_path is None:
             srmp_srdf_path = getattr(env, "srmp_srdf_path", None)
         self.srmp_srdf_path = srmp_srdf_path
@@ -146,7 +148,7 @@ class RidgebackUR10ePlanningSolver:
         if self.srmp_search_weight < 1.0:
             raise ValueError("SRMP weighted-A* weight must be at least 1")
         self.srmp_planner = None
-        self._srmp_robot_name = "static_ridgebackur10e"
+        self._srmp_robot_name = self.robot.name
         self._last_srmp_failure_detail = None
         self._srmp_trace_path = os.environ.get("PYMOSAIC_SRMP_TRACE_PATH")
         self._srmp_attachment_state = {}
@@ -202,13 +204,14 @@ class RidgebackUR10ePlanningSolver:
     def setup_planner(self):
         link_names = [link.get_name() for link in self.robot.get_links()]
         joint_names = [joint.get_name() for joint in self.robot.get_active_joints()]
-        dof = 9 if self.robot.name == "ridgebackur10e" else 6 if self.robot.name == "static_ridgebackur10e" else 7
+        dof = len(self.env_agent.arm_joint_names)
+        srdf_path = self.srmp_srdf_path or self.env_agent.urdf_path.replace(".urdf", ".srdf")
         planner = mplib.Planner(
             urdf=self.env_agent.urdf_path,
-            srdf=self.env_agent.urdf_path.replace(".urdf", ".srdf"),
+            srdf=srdf_path,
             user_link_names=link_names,
             user_joint_names=joint_names,
-            move_group="ur_arm_TCP",
+            move_group=self.env_agent.ee_link_name,
             joint_vel_limits=np.ones(dof) * self.joint_vel_limits,
             joint_acc_limits=np.ones(dof) * self.joint_acc_limits,
             use_convex=False,
@@ -287,7 +290,9 @@ class RidgebackUR10ePlanningSolver:
                 f"expected {expected_joints}, got {move_group_joints}"
             )
         if planner.get_move_group_qpos_dim(self._srmp_robot_name) != len(expected_joints):
-            raise RuntimeError("SRMP move group does not have six controllable arm DOFs")
+            raise RuntimeError(
+                f"SRMP move group does not have {len(expected_joints)} controllable arm DOFs"
+            )
         actual_gripper_joints = planner.get_gripper_joint_names(
             self._srmp_robot_name
         )
@@ -710,14 +715,48 @@ class RidgebackUR10ePlanningSolver:
             )
         positions = np.asarray(trajectory.positions, dtype=np.float64)
         if positions.size == 0:
-            return finish(
-                {"status": "SRMP failed to find a path"},
-                {
-                    "reason": "search_failed",
-                    "valid_goal_count": len(valid_goals),
-                    "invalid_goal_count": len(invalid_details),
-                },
+            # SRMP's directed lattice can miss a path that it finds in reverse.
+            # For a static kinematic scene, reverse that path and validate it again.
+            reverse_goal = min(
+                valid_goals, key=lambda goal: float(np.linalg.norm(goal - search_start))
             )
+            try:
+                reverse = self.srmp_planner.plan(
+                    reverse_goal,
+                    srmp.GoalConstraint(srmp.GoalType.JOINTS, [search_start]),
+                )
+                positions = np.asarray(reverse.positions, dtype=np.float64)
+            except RuntimeError:
+                positions = np.empty((0, len(search_start)), dtype=np.float64)
+            if positions.size:
+                if positions.ndim == 1:
+                    positions = positions[None, :]
+                positions = positions[::-1].copy()
+                gap = float(np.max(np.abs(positions[0] - search_start)))
+                prefix = np.linspace(
+                    search_start,
+                    positions[0],
+                    max(1, int(np.ceil(gap / 0.002))) + 1,
+                    dtype=np.float64,
+                )[:-1]
+                positions = np.concatenate([prefix, positions], axis=0)
+                for qpos in positions:
+                    self.srmp_planner.set_qpos(self._srmp_robot_name, qpos)
+                    if bool(self.srmp_planner.is_state_colliding(self._srmp_robot_name)):
+                        positions = np.empty((0, len(search_start)), dtype=np.float64)
+                        break
+                self.srmp_planner.set_qpos(self._srmp_robot_name, start)
+                if trace is not None:
+                    trace["reverse_search_fallback"] = bool(positions.size)
+            if not positions.size:
+                return finish(
+                    {"status": "SRMP failed to find a path"},
+                    {
+                        "reason": "search_failed",
+                        "valid_goal_count": len(valid_goals),
+                        "invalid_goal_count": len(invalid_details),
+                    },
+                )
         if positions.ndim == 1:
             positions = positions[None, :]
         if start_bridge is not None:
@@ -869,7 +908,9 @@ class RidgebackUR10ePlanningSolver:
                 chain = pk.build_serial_chain_from_urdf(
                     stream.read(),
                     end_link_name=self.env_agent.ee_link_name,
-                    root_link_name="ur_arm_base_link",
+                    root_link_name=getattr(
+                        self.env_agent, "kinematics_root_link_name", "ur_arm_base_link"
+                    ),
                 ).to(dtype=torch.float32, device=device)
             if chain.get_joint_parameter_names() != list(self.env_agent.arm_joint_names):
                 raise RuntimeError("Batched IK joint order does not match the SRMP move group")
@@ -1748,7 +1789,7 @@ class RidgebackUR10ePlanningSolver:
 
     def open_gripper(self):
         self.gripper_state = OPEN
-        qpos = self.robot.get_qpos()[0, :-2].cpu().numpy()
+        qpos = self._move_group_qpos(self.robot.get_qpos().cpu().numpy()[0])
 
         for i in range(6):
             if self.control_mode == "pd_joint_pos":
@@ -1768,7 +1809,7 @@ class RidgebackUR10ePlanningSolver:
     def control_gripper(self, t=6, gripper_state = CLOSED):
         self.gripper_state = gripper_state
         # self.render_wait()
-        qpos = self.robot.get_qpos()[0, :-6].cpu().numpy()
+        qpos = self._move_group_qpos(self.robot.get_qpos().cpu().numpy()[0])
         for i in range(t):
             if self.control_mode == "pd_joint_pos":
                 action = np.hstack([qpos, self.gripper_state])

@@ -59,6 +59,8 @@ class SO107(BaseAgent):
     gripper_joint_names = [
         "gripper",
     ]
+    ee_link_name = "gripper_frame_link"
+    kinematics_root_link_name = "base_link"
 
     @property
     def _controller_configs(self):
@@ -88,10 +90,32 @@ class SO107(BaseAgent):
         pd_joint_target_delta_pos = copy.deepcopy(pd_joint_delta_pos)
         pd_joint_target_delta_pos.use_target = True
 
+        arm_pd_joint_pos_vel = PDJointPosVelControllerConfig(
+            self.arm_joint_names,
+            None,
+            None,
+            stiffness=[1e3] * 6,
+            damping=[1e2] * 6,
+            force_limit=100,
+            normalize_action=False,
+        )
+        gripper_pd_joint_pos = PDJointPosControllerConfig(
+            self.gripper_joint_names,
+            None,
+            None,
+            stiffness=1e3,
+            damping=1e2,
+            force_limit=100,
+            normalize_action=False,
+        )
+
         controller_configs = dict(
             pd_joint_delta_pos=pd_joint_delta_pos,
             pd_joint_pos=pd_joint_pos,
             pd_joint_target_delta_pos=pd_joint_target_delta_pos,
+            pd_joint_pos_vel=dict(
+                arm=arm_pd_joint_pos_vel, gripper=gripper_pd_joint_pos
+            ),
         )
         return deepcopy_dict(controller_configs)
 
