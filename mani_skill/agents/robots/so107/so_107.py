@@ -62,6 +62,13 @@ class SO107(BaseAgent):
     ee_link_name = "gripper_frame_link"
     kinematics_root_link_name = "base_link"
 
+    # Measured from the URDF collision meshes in gripper_frame_link coordinates.
+    gripper_open_command = 0.8
+    gripper_closed_command = -0.174533
+    grasp_closing_axis_index = 0
+    antipodal_grasp_box_center = np.array([-0.034, 0.0, -0.035])
+    antipodal_grasp_box_extents = np.array([0.070, 0.030, 0.070])
+
     @property
     def _controller_configs(self):
         pd_joint_pos = PDJointPosControllerConfig(

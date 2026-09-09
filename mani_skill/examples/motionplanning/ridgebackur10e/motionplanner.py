@@ -1694,13 +1694,29 @@ class RidgebackUR10ePlanningSolver:
         tcp_position = tcp_pose.get_p()
         tcp_orientation = tcp_pose.get_q()
         score = 0
-        gripper_line_vector = np.array([0.0, 0.2, 0.0])
         tcp_ori_mat = quaternions.quat2mat(tcp_orientation)
-        gripper_line_vector = tcp_ori_mat @ gripper_line_vector
+        closing_axis_index = int(
+            getattr(self.env_agent, "grasp_closing_axis_index", 1)
+        )
+        gripper_line_vector = tcp_ori_mat[:, closing_axis_index]
         gripper_line_vector /= np.linalg.norm(gripper_line_vector)
-        box = o3d.geometry.OrientedBoundingBox(tcp_position,
-                                               tcp_ori_mat,
-                                               np.array([0.05, 0.4, 0.05]))
+        box_center = np.asarray(
+            getattr(self.env_agent, "antipodal_grasp_box_center", np.zeros(3)),
+            dtype=np.float64,
+        )
+        box_extents = np.asarray(
+            getattr(
+                self.env_agent,
+                "antipodal_grasp_box_extents",
+                np.array([0.05, 0.4, 0.05]),
+            ),
+            dtype=np.float64,
+        )
+        box = o3d.geometry.OrientedBoundingBox(
+            tcp_position + tcp_ori_mat @ box_center,
+            tcp_ori_mat,
+            box_extents,
+        )
         indices = box.get_point_indices_within_bounding_box(o3d.utility.Vector3dVector(pc))
         if isinstance(normals, np.ndarray):
             normals = [x for x in normals]
