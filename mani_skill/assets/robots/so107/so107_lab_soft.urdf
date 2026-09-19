@@ -1,0 +1,526 @@
+<?xml version="1.0" ?>
+<!-- Author: Itamar Mishani -->
+<!-- so107_lab: identical to so107.urdf except that the wrist camera is the XLeRobot wrist
+     camera (data/xlerobot/xlerobot.urdf's Right_Arm_Camera: XLeRobot_camera1/2 meshes) instead of
+     the SO-ARM101 printed camera wrist mount. The camera pose is the xlerobot mount pose mapped out
+     of its Fixed_Jaw frame into this robot's gripper_link frame; that mapping (x -> -x, y -> z,
+     z -> y) was fixed by the two frames' shared landmarks: the jaw pivot, the gripper tip, and the
+     jaw rotation axis. -->
+
+<robot name="so107_lab_soft">
+<!-- Soft finray variant for visualization and rigid collision checking.
+     Geometry: XLeRobot hardware/SO101_soft_fin.stl; see SOFT_GRIPPER.md.
+     Original inertials are retained and are NOT calibrated for these replacement parts. -->
+<material name="soft_orange"><color rgba="0.95 0.43 0.09 1"/></material>
+
+<material name="printed_white">
+  <color rgba="0.964706 0.964706 0.952941 1.0"/>
+</material>
+<material name="motor_grey">
+  <color rgba="0.027451 0.027451 0.027451 1.0"/>
+</material>
+<material name="plate_grey">
+  <color rgba="0.901961 0.901961 0.901961 1.0"/>
+</material>
+<material name="camera_body_grey">
+  <color rgba="0.3 0.3 0.3 1.0"/>
+</material>
+
+<link name="base_link">
+  <inertial>
+    <origin xyz="0.0137179 -5.19711e-05 0.0334843" rpy="0 0 0"/>
+    <mass value="0.147"/>
+    <inertia ixx="0.000114686" ixy="-4.59787e-07" ixz="4.97151e-06" iyy="0.000136117" iyz="9.75275e-08" izz="0.000130364"/>
+  </inertial>
+  <!-- Part base_so101_v2 -->
+  <visual>
+    <origin xyz="0 0 0" rpy="1.5708 -1.2469e-08 1.5708"/>
+    <geometry>
+      <mesh filename="meshes/base_so101_v2.stl"/>
+    </geometry>
+    <material name="printed_white"/>
+  </visual>
+  <collision>
+    <origin xyz="0 0 0" rpy="1.5708 -1.2469e-08 1.5708"/>
+    <geometry>
+      <mesh filename="meshes/base_so101_v2.stl"/>
+    </geometry>
+  </collision>
+  <!-- Part sts3215_03a_v1 (shoulder pan motor) -->
+  <visual>
+    <origin xyz="0.0324 -0.000250001 0.0461" rpy="1.2469e-08 -1.0799e-08 -2.6996e-08"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1.stl"/>
+    </geometry>
+    <material name="motor_grey"/>
+  </visual>
+  <collision>
+    <origin xyz="0.0324 -0.000250001 0.0461" rpy="1.2469e-08 -1.0799e-08 -2.6996e-08"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1.stl"/>
+    </geometry>
+  </collision>
+  <!-- Part base_motor_holder_so101_v1 -->
+  <visual>
+    <origin xyz="3e-12 9.94325e-05 1e-12" rpy="1.5708 -1.2469e-08 1.5708"/>
+    <geometry>
+      <mesh filename="meshes/base_motor_holder_so101_v1.stl"/>
+    </geometry>
+    <material name="printed_white"/>
+  </visual>
+  <collision>
+    <origin xyz="3e-12 9.94325e-05 1e-12" rpy="1.5708 -1.2469e-08 1.5708"/>
+    <geometry>
+      <mesh filename="meshes/base_motor_holder_so101_v1.stl"/>
+    </geometry>
+  </collision>
+  <!-- Part seeedstudio_mounting_plate_so101_v3 -->
+  <visual>
+    <origin xyz="-0.0222882 -0.00110957 0.0498" rpy="1.5708 -1.2469e-08 1.5708"/>
+    <geometry>
+      <mesh filename="meshes/seeedstudio_mounting_plate_so101_v3.stl"/>
+    </geometry>
+    <material name="printed_white"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.0222882 -0.00110957 0.0498" rpy="1.5708 -1.2469e-08 1.5708"/>
+    <geometry>
+      <mesh filename="meshes/seeedstudio_mounting_plate_so101_v3.stl"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="shoulder_link">
+  <!-- Inertial reused from so101.urdf's shoulder_link (real stock part), rotated by the small
+       (~1.2 deg) difference between so101's and this so107's own shoulder_pan rpy. -->
+  <inertial>
+    <origin xyz="-0.0307546 0.000632375 -0.0252713" rpy="0 0 0"/>
+    <mass value="0.100006"/>
+    <inertia ixx="8.37648e-05" ixy="1.81355e-08" ixz="-1.15992e-06" iyy="8.1042e-05" iyz="1.7918e-07" izz="2.39783e-05"/>
+  </inertial>
+  <!-- Part sts3215_03a_v1__2 (shoulder lift motor) -->
+  <visual>
+    <origin xyz="-0.0306 0.0004 -0.0397" rpy="1.5708 1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1__2.stl"/>
+    </geometry>
+    <material name="motor_grey"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.0306 0.0004 -0.0397" rpy="1.5708 1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1__2.stl"/>
+    </geometry>
+  </collision>
+  <!-- Part rotation_pitch_so101_v1 -->
+  <visual>
+    <origin xyz="0.012 0 0.0484" rpy="-1.5708 -0 0"/>
+    <geometry>
+      <mesh filename="meshes/rotation_pitch_so101_v1.stl"/>
+    </geometry>
+    <material name="printed_white"/>
+  </visual>
+  <collision>
+    <origin xyz="0.012 0 0.0484" rpy="-1.5708 -0 0"/>
+    <geometry>
+      <mesh filename="meshes/rotation_pitch_so101_v1.stl"/>
+    </geometry>
+  </collision>
+  <!-- Part motor_holder_so101_base_v1 -->
+  <visual>
+    <origin xyz="-0.0678 -0.0002 0.0178499" rpy="1.5708 -1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/motor_holder_so101_base_v1.stl"/>
+    </geometry>
+    <material name="printed_white"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.0678 -0.0002 0.0178499" rpy="1.5708 -1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/motor_holder_so101_base_v1.stl"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="upper_arm_link">
+  <!-- Inertial reused from so101.urdf's upper_arm_link (real stock part), rotated the same way. -->
+  <inertial>
+    <origin xyz="-0.090006 -0.00648479 0.0184089" rpy="0 0 0"/>
+    <mass value="0.103"/>
+    <inertia ixx="4.00148e-05" ixy="-1.75181e-05" ixz="-4.01042e-08" iyy="0.000148112" iyz="9.82183e-09" izz="0.000142487"/>
+  </inertial>
+  <!-- Part upper_arm_so101_v1 -->
+  <visual>
+    <origin xyz="-0.065085 0.012 0.0197" rpy="-3.14159 -0 -0"/>
+    <geometry>
+      <mesh filename="meshes/upper_arm_so101_v1.stl"/>
+    </geometry>
+    <material name="printed_white"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.065085 0.012 0.0197" rpy="-3.14159 -0 -0"/>
+    <geometry>
+      <mesh filename="meshes/upper_arm_so101_v1.stl"/>
+    </geometry>
+  </collision>
+  <!-- Part sts3215_03a_v1__3 (elbow flex motor) -->
+  <visual>
+    <origin xyz="-0.112485 -0.0155 0.0202" rpy="-3.14159 0 -1.5708"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1__3.stl"/>
+    </geometry>
+    <material name="motor_grey"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.112485 -0.0155 0.0202" rpy="-3.14159 0 -1.5708"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1__3.stl"/>
+    </geometry>
+  </collision>
+</link>
+
+<!-- lower_arm_link: houses the elbow_flex motor's output and the forearm_roll motor, built from a
+     wrist-style bracket (same parts as so101's wrist assembly), so its inertial reuses so101's
+     wrist_link inertial rotated into this joint slot instead. -->
+<link name="lower_arm_link">
+  <inertial>
+    <origin xyz="0.0272952 -0.0391998 0.000103312" rpy="0 0 0"/>
+    <mass value="0.079"/>
+    <inertia ixx="2.11565e-05" ixy="3.73075e-06" ixz="5.24247e-08" iyy="2.52366e-05" iyz="-1.90038e-08" izz="3.68263e-05"/>
+  </inertial>
+  <!-- Part sts3215_03a_v1 (elbow roll / forearm_roll motor) -->
+  <visual>
+    <origin xyz="-0.0424 0 0.0326" rpy="-3.14159 1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1.stl"/>
+    </geometry>
+    <material name="motor_grey"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.0424 0 0.0326" rpy="-3.14159 1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1.stl"/>
+    </geometry>
+  </collision>
+  <!-- Part wrist_roll_pitch_so101_v2 -->
+  <visual>
+    <origin xyz="-0.028 0 0.0201" rpy="3.14159 -1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/wrist_roll_pitch_so101_v2.stl"/>
+    </geometry>
+    <material name="printed_white"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.028 0 0.0201" rpy="3.14159 -1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/wrist_roll_pitch_so101_v2.stl"/>
+    </geometry>
+  </collision>
+</link>
+
+<!-- forearm_roll_link: the new printed part carrying the forearm_roll motor, no so101 equivalent.
+     Inertial is a rough estimate (similar mass/order to the other motor+bracket links); refine once
+     you have real mass/CoM measurements for this part. -->
+<link name="forearm_roll_link">
+  <!-- Inertial computed from actual mesh geometry: PLA/PETG density (1240 kg/m^3) for the two
+       printed parts, STS3215 datasheet mass (32g) for the motor, combined via parallel axis. -->
+  <inertial>
+    <origin xyz="-0.00183521 0.000577097 -0.0395289" rpy="0 0 0"/>
+    <mass value="0.0953049"/>
+    <inertia ixx="6.21547e-05" ixy="-7.23821e-08" ixz="-3.46179e-06" iyy="4.86412e-05" iyz="-7.86176e-07" izz="2.89083e-05"/>
+  </inertial>
+  <!-- Part component1___use -->
+  <visual>
+    <origin xyz="0.0322139 0.000167782 -0.00279166" rpy="-1.5708 -1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/component1___use.stl"/>
+    </geometry>
+    <material name="printed_white"/>
+  </visual>
+  <collision>
+    <origin xyz="0.0322139 0.000167782 -0.00279166" rpy="-1.5708 -1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/component1___use.stl"/>
+    </geometry>
+  </collision>
+  <!-- Part motor_holder_so101_wrist_v1 -->
+  <visual>
+    <origin xyz="0.0322139 0.000367782 -0.00279166" rpy="-1.5708 -1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/motor_holder_so101_wrist_v1.stl"/>
+    </geometry>
+    <material name="printed_white"/>
+  </visual>
+  <collision>
+    <origin xyz="0.0322139 0.000367782 -0.00279166" rpy="-1.5708 -1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/motor_holder_so101_wrist_v1.stl"/>
+    </geometry>
+  </collision>
+  <!-- Part sts3215_03a_v1 (wrist flex motor) -->
+  <visual>
+    <origin xyz="-0.00498613 -0.000332218 -0.0603416" rpy="-1.5708 1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1.stl"/>
+    </geometry>
+    <material name="motor_grey"/>
+  </visual>
+  <collision>
+    <origin xyz="-0.00498613 -0.000332218 -0.0603416" rpy="-1.5708 1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1.stl"/>
+    </geometry>
+  </collision>
+</link>
+
+<link name="wrist_link">
+  <!-- Inertial reused from so101.urdf's wrist_link (real stock part), rotated by the small
+       difference between so101's and this so107's own wrist_flex-to-wrist_roll rpy chain. -->
+  <inertial>
+    <origin xyz="-0.000918053 -0.0386044 0.0281156" rpy="0 0 0"/>
+    <mass value="0.079"/>
+    <inertia ixx="3.68236e-05" ixy="-2.23359e-07" ixz="2.40271e-08" iyy="2.53965e-05" iyz="3.64159e-06" izz="2.1e-05"/>
+  </inertial>
+  <!-- Part wrist_roll_pitch_so101_v2 -->
+  <visual>
+    <origin xyz="0 -0.028 0.0201" rpy="-1.5708 -1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/wrist_roll_pitch_so101_v2.stl"/>
+    </geometry>
+    <material name="printed_white"/>
+  </visual>
+  <collision>
+    <origin xyz="0 -0.028 0.0201" rpy="-1.5708 -1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/wrist_roll_pitch_so101_v2.stl"/>
+    </geometry>
+  </collision>
+  <!-- Part sts3215_03a_v1__3 (wrist roll motor) -->
+  <visual>
+    <origin xyz="0 -0.0424 0.0326" rpy="1.5708 1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1__3.stl"/>
+    </geometry>
+    <material name="motor_grey"/>
+  </visual>
+  <collision>
+    <origin xyz="0 -0.0424 0.0326" rpy="1.5708 1.5708 0"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1__3.stl"/>
+    </geometry>
+  </collision>
+</link>
+
+<!-- gripper_link: reverted to so101.urdf's own simple gripper_link (motor + wrist_roll_follower
+     bracket) verbatim, since the onshape export's "interface_arm100" mounting-plate assembly
+     (camera mount + top/bottom plates + parallel-rod mechanism) didn't look right and isn't what's
+     on the physical robot's current gripper. -->
+<link name="gripper_link">
+  <!-- Inertial = so101's real motor+bracket inertial, combined (via parallel axis) with the
+       XLeRobot wrist camera's inertia computed from its actual mesh geometry (PLA/PETG density,
+       1240 kg/m^3, camera1 + camera2 = 17.2 g), in place of the SO-ARM101 mount that so107.urdf
+       accounts for here. -->
+  <inertial>
+    <origin xyz="0.00073493 0.00919806 -0.0211087" rpy="0 0 0"/>
+    <mass value="0.104248"/>
+    <inertia ixx="8.60414e-05" ixy="-3.03303e-06" ixz="-6.99049e-06" iyy="5.51285e-05" iyz="-2.0887e-05" izz="8.46451e-05"/>
+  </inertial>
+  <!-- Part sts3215_03a_v1_5 -->
+  <visual>
+    <origin xyz="0.0077 0.0001 -0.0234" rpy="-1.5708 -5.19179e-17 -1.66533e-16"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1.stl"/>
+    </geometry>
+    <material name="motor_grey"/>
+  </visual>
+  <collision>
+    <origin xyz="0.0077 0.0001 -0.0234" rpy="-1.5708 -5.19179e-17 -1.66533e-16"/>
+    <geometry>
+      <mesh filename="meshes/sts3215_03a_v1.stl"/>
+    </geometry>
+  </collision>
+  <!-- Part wrist_roll_follower_so101_v1 -->
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry><mesh filename="meshes/soft_fixed_holder.stl"/></geometry>
+    <material name="printed_white"/>
+  </visual>
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry><mesh filename="meshes/soft_fixed_finger.stl"/></geometry>
+    <material name="soft_orange"/>
+  </visual>
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry><mesh filename="meshes/soft_fixed_holder.stl"/></geometry>
+    
+  </collision>
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry><mesh filename="meshes/soft_fixed_finger_collision.stl"/></geometry>
+    
+  </collision>
+  <!-- Wrist camera: the XLeRobot wrist camera (xlerobot.urdf's Right_Arm_Camera link), body shell
+       + lens module. Both meshes keep their xlerobot-local placement (-0.015 -0.026 0 inside the
+       camera frame); the single extra transform below is that camera frame expressed in this
+       robot's gripper_link frame, so the camera sits where it does on the xlerobot gripper.
+       Collision mirrors visual, matching how every other part of this robot is modelled. -->
+  <visual>
+    <origin xyz="0 0.024 -0.005" rpy="0 1.5707963 0"/>
+    <geometry>
+      <mesh filename="meshes/XLeRobot_camera1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="camera_body_grey"/>
+  </visual>
+  <collision>
+    <origin xyz="0 0.024 -0.005" rpy="0 1.5707963 0"/>
+    <geometry>
+      <mesh filename="meshes/XLeRobot_camera1.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+  <visual>
+    <origin xyz="0 0.024 -0.005" rpy="0 1.5707963 0"/>
+    <geometry>
+      <mesh filename="meshes/XLeRobot_camera2.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+    <material name="motor_grey"/>
+  </visual>
+  <collision>
+    <origin xyz="0 0.024 -0.005" rpy="0 1.5707963 0"/>
+    <geometry>
+      <mesh filename="meshes/XLeRobot_camera2.stl" scale="0.001 0.001 0.001"/>
+    </geometry>
+  </collision>
+</link>
+
+<!-- Gripper frame (dummy link + fixed joint) -->
+<link name="gripper_frame_link">
+  <inertial>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <mass value="1e-9"/>
+    <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+  </inertial>
+</link>
+
+<!-- Wrist camera frame (dummy link): this is xlerobot.urdf's own Right_Arm_Camera frame, mapped
+     into gripper_link, so the camera meshes above are placed relative to it exactly as they are on
+     the xlerobot. Its local +X points along the gripper's approach axis (the same convention the
+     xlerobot camera frame has relative to its Fixed_Jaw). -->
+<link name="camera_link">
+  <inertial>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <mass value="1e-9"/>
+    <inertia ixx="0" ixy="0" ixz="0" iyy="0" iyz="0" izz="0"/>
+  </inertial>
+</link>
+
+<joint name="camera_joint" type="fixed">
+  <origin xyz="0 0.05 -0.02" rpy="0 1.5707963 0"/>
+  <parent link="gripper_link"/>
+  <child link="camera_link"/>
+  <axis xyz="0 0 0"/>
+</joint>
+
+<joint name="gripper_frame_joint" type="fixed">
+  <!-- Nominal midpoint of the distal 1 mm of both undeformed fingers at gripper=0. -->
+  <origin xyz="-0.00165747 0.00076389 -0.10587056" rpy="0 3.14159 0"/>
+  <parent link="gripper_link"/>
+  <child link="gripper_frame_link"/>
+  <axis xyz="0 0 0"/>
+</joint>
+
+<!-- Link moving_jaw_so101_v1 (kept as our existing simple single-revolute jaw) -->
+<link name="moving_jaw_so101_v1_link">
+  <inertial>
+    <origin xyz="-0.00157495 -0.0300244 0.0192755" rpy="0 0 0"/>
+    <mass value="0.012"/>
+    <inertia ixx="6.61427e-06" ixy="-3.19807e-07" ixz="-5.90717e-09" iyy="1.89032e-06" iyz="-1.09945e-07" izz="5.28738e-06"/>
+  </inertial>
+  <!-- Part moving_jaw_so101_v1 -->
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry><mesh filename="meshes/soft_moving_holder.stl"/></geometry>
+    <material name="printed_white"/>
+  </visual>
+  <visual>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry><mesh filename="meshes/soft_moving_finger.stl"/></geometry>
+    <material name="soft_orange"/>
+  </visual>
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry><mesh filename="meshes/soft_moving_holder.stl"/></geometry>
+    
+  </collision>
+  <collision>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <geometry><mesh filename="meshes/soft_moving_finger_collision.stl"/></geometry>
+    
+  </collision>
+</link>
+
+<joint name="shoulder_pan" type="revolute">
+  <origin xyz="0.0449 -0.000250002 0.0663" rpy="3.14159 1.0534e-08 3.12052"/>
+  <parent link="base_link"/>
+  <child link="shoulder_link"/>
+  <axis xyz="0 0 1"/>
+  <limit effort="10" velocity="10" lower="-1.91986" upper="1.91986"/>
+</joint>
+
+<joint name="shoulder_lift" type="revolute">
+  <origin xyz="-0.0306 -0.0198 -0.0522" rpy="-1.5708 -1.5708 0"/>
+  <parent link="shoulder_link"/>
+  <child link="upper_arm_link"/>
+  <axis xyz="0 0 1"/>
+  <limit effort="10" velocity="10" lower="-1.74533" upper="1.74533"/>
+</joint>
+
+<joint name="elbow_flex" type="revolute">
+  <!-- axis flipped relative to the raw CAD export: this joint's origin carries an extra ~180 deg
+       roll about X compared to so101.urdf's elbow_flex (same physical motor, unchanged calibration),
+       which inverts the sign of a "0 0 1" axis as seen from the parent frame. Without this flip the
+       joint rotates opposite to the real robot. -->
+  <origin xyz="-0.112485 -0.028 0.04" rpy="-3.14159 -0 1.5708"/>
+  <parent link="upper_arm_link"/>
+  <child link="lower_arm_link"/>
+  <axis xyz="0 0 -1"/>
+  <limit effort="10" velocity="10" lower="-1.69" upper="1.69"/>
+</joint>
+
+<!-- forearm_roll: the printed part's own added joint (called "elbow_roll" in the onshape export). -->
+<joint name="forearm_roll" type="revolute">
+  <origin xyz="-0.0626 0 0.0201" rpy="-1.5708 3.14159 -1.5708"/>
+  <parent link="lower_arm_link"/>
+  <child link="forearm_roll_link"/>
+  <axis xyz="0 0 1"/>
+  <limit effort="10" velocity="10" lower="-3.14159" upper="3.14159"/>
+</joint>
+
+<joint name="wrist_flex" type="revolute">
+  <origin xyz="-0.00498613 0.0198678 -0.0728416" rpy="1.5708 0 -0"/>
+  <parent link="forearm_roll_link"/>
+  <child link="wrist_link"/>
+  <axis xyz="0 0 1"/>
+  <limit effort="10" velocity="10" lower="-3.14159" upper="3.14159"/>
+</joint>
+
+<!-- Origin taken from so101.urdf's own wrist_roll (rather than the onshape export's), so it matches
+     the gripper_link content restored below. -->
+<joint name="wrist_roll" type="revolute">
+  <origin xyz="5.55112e-17 -0.0611 0.0181" rpy="1.5708 1.5708 3.14159"/>
+  <parent link="wrist_link"/>
+  <child link="gripper_link"/>
+  <axis xyz="0 0 1"/>
+  <limit effort="10" velocity="10" lower="-2.74385" upper="2.84121"/>
+</joint>
+
+<!-- Joint from gripper to moving_jaw_so101_v1 (kept as our existing simple jaw joint) -->
+<joint name="gripper" type="revolute">
+  <origin xyz="0.0202 0.0188 -0.0234" rpy="1.5708 -5.24284e-08 -1.41553e-15"/>
+  <parent link="gripper_link"/>
+  <child link="moving_jaw_so101_v1_link"/>
+  <axis xyz="0 0 1"/>
+  <limit effort="10" velocity="10" lower="-0.174533" upper="1.74533"/>
+</joint>
+
+</robot>

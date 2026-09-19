@@ -1724,7 +1724,11 @@ class RidgebackUR10ePlanningSolver:
             raise ValueError(f"Invalid type {type(normals)}")
         normals_in_grasp = np.array([normals[i] for i in indices])
         if len(normals_in_grasp) > 0:
-            score = np.mean(np.abs(np.dot(normals_in_grasp, gripper_line_vector)))
+            alignment = np.dot(normals_in_grasp, gripper_line_vector)
+            positive = alignment[alignment >= 0.5]
+            negative = alignment[alignment <= -0.5]
+            if len(positive) and len(negative):
+                score = min(float(np.mean(positive)), float(np.mean(-negative)))
         return score
 
 
@@ -1774,8 +1778,14 @@ class RidgebackUR10ePlanningSolver:
                 p=ee_position,
                 q=euler.euler2quat(*ee_orientation, axes="szyx"),
             )
+            if getattr(self.env_agent, "require_vertical_grasp_closing_axis", False):
+                rotation = quaternions.quat2mat(world_pose.q)
+                closing_axis = rotation[:, int(self.env_agent.grasp_closing_axis_index)]
+                if abs(float(closing_axis[2])) < 0.95:
+                    continue
             score = self.get_antipodal_pose_score(world_pose, pc, normals)
-            scored_poses.append((float(score), base_pose.inv() * world_pose))
+            if score > 0:
+                scored_poses.append((float(score), base_pose.inv() * world_pose))
         scored_poses.sort(key=lambda item: item[0], reverse=True)
 
         start_qpos = self.robot.get_qpos().cpu().numpy()[0]

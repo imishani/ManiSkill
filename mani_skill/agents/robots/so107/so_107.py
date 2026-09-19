@@ -22,16 +22,16 @@ class SO107(BaseAgent):
     """
 
     uid = "so107"
-    urdf_path = f"{PACKAGE_ASSET_DIR}/robots/so107/so107.urdf"
+    urdf_path = f"{PACKAGE_ASSET_DIR}/robots/so107/so107_lab_soft_wowrobo.urdf"
     urdf_config = dict(
         _materials=dict(
             gripper=dict(static_friction=2, dynamic_friction=2, restitution=0.0)
         ),
         link=dict(
-            gripper_link=dict(
+            fixed_finger_link=dict(
                 material="gripper", patch_radius=0.1, min_patch_radius=0.1
             ),
-            moving_jaw_so101_v1_link=dict(
+            moving_finger_link=dict(
                 material="gripper", patch_radius=0.1, min_patch_radius=0.1
             ),
         ),
@@ -66,8 +66,10 @@ class SO107(BaseAgent):
     gripper_open_command = 0.8
     gripper_closed_command = -0.174533
     grasp_closing_axis_index = 0
-    antipodal_grasp_box_center = np.array([-0.034, 0.0, -0.035])
-    antipodal_grasp_box_extents = np.array([0.070, 0.030, 0.070])
+    require_vertical_grasp_closing_axis = True
+    antipodal_grasp_box_center = np.array([0.0, 0.0, -0.015])
+    antipodal_grasp_box_extents = np.array([0.070, 0.030, 0.020])
+    grasp_contact_min_force = 0.01
 
     @property
     def _controller_configs(self):
@@ -103,7 +105,7 @@ class SO107(BaseAgent):
             None,
             stiffness=[1e3] * 6,
             damping=[1e2] * 6,
-            force_limit=100,
+            force_limit=10,
             normalize_action=False,
         )
         gripper_pd_joint_pos = PDJointPosControllerConfig(
@@ -112,7 +114,7 @@ class SO107(BaseAgent):
             None,
             stiffness=1e3,
             damping=1e2,
-            force_limit=100,
+            force_limit=1.0,
             normalize_action=False,
         )
 
@@ -143,21 +145,14 @@ class SO107(BaseAgent):
 
     def _after_loading_articulation(self):
         super()._after_loading_articulation()
-        # finger1 = gripper_link (fixed body the jaw pivots against), finger2 = the moving jaw
-        self.finger1_link = self.robot.links_map["gripper_link"]
-        self.finger2_link = self.robot.links_map["moving_jaw_so101_v1_link"]
+        self.finger1_link = self.robot.links_map["fixed_finger_link"]
+        self.finger2_link = self.robot.links_map["moving_finger_link"]
         # generic single-link TCP expected by built-in tabletop tasks (e.g. PushCube-v1);
         # reuses gripper_frame_link, the same frame lerobot's own kinematics/IK targets.
         self.tcp = self.robot.links_map["gripper_frame_link"]
 
-    def is_grasping(self, object: Actor, min_force=0.5, max_angle=110):
-        """Check if the robot is grasping an object
-
-        Args:
-            object (Actor): The object to check if the robot is grasping
-            min_force (float, optional): Minimum force before the robot is considered to be grasping the object in Newtons. Defaults to 0.5.
-            max_angle (int, optional): Maximum angle of contact to consider grasping. Defaults to 110.
-        """
+    def has_bilateral_gripper_contact(self, object: Actor, min_force=0.5, max_angle=110):
+        min_force = min(float(min_force), self.grasp_contact_min_force)
         l_contact_forces = self.scene.get_pairwise_contact_forces(
             self.finger1_link, object
         )
@@ -166,19 +161,22 @@ class SO107(BaseAgent):
         )
         lforce = torch.linalg.norm(l_contact_forces, axis=1)
         rforce = torch.linalg.norm(r_contact_forces, axis=1)
-
-        # direction to open the gripper
         ldirection = self.finger1_link.pose.to_transformation_matrix()[..., :3, 1]
         rdirection = -self.finger2_link.pose.to_transformation_matrix()[..., :3, 1]
-        langle = common.compute_angle_between(ldirection, l_contact_forces)
-        rangle = common.compute_angle_between(rdirection, r_contact_forces)
         lflag = torch.logical_and(
-            lforce >= min_force, torch.rad2deg(langle) <= max_angle
+            lforce >= min_force,
+            torch.rad2deg(common.compute_angle_between(ldirection, l_contact_forces)) <= max_angle,
         )
         rflag = torch.logical_and(
-            rforce >= min_force, torch.rad2deg(rangle) <= max_angle
+            rforce >= min_force,
+            torch.rad2deg(common.compute_angle_between(rdirection, r_contact_forces)) <= max_angle,
         )
         return torch.logical_and(lflag, rflag)
+
+    def is_grasping(self, object: Actor, min_force=0.5, max_angle=60):
+        return self.has_bilateral_gripper_contact(
+            object, min_force=min_force, max_angle=max_angle
+        )
 
     def is_static(self, threshold=0.2):
         qvel = self.robot.get_qvel()[:, :-1]  # exclude the gripper joint
