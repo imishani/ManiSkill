@@ -108,6 +108,7 @@ class RidgebackUR10ePlanningSolver:
         joint_acc_limits=0.9,
         motion_backend: Optional[str] = None,
         srmp_srdf_path: Optional[str] = None,
+        srmp_planner_id: Optional[str] = None,
         srmp_time_limit_s: Optional[float] = None,
         srmp_search_resolution_deg: Optional[float] = None,
         srmp_search_heuristic: Optional[str] = None,
@@ -128,7 +129,12 @@ class RidgebackUR10ePlanningSolver:
         if srmp_srdf_path is None:
             srmp_srdf_path = getattr(env, "srmp_srdf_path", None)
         self.srmp_srdf_path = srmp_srdf_path
-        self.srmp_planner_id = "wAstar"
+        self.srmp_planner_id = str(srmp_planner_id or "wAstar")
+        if self.srmp_planner_id not in {"wAstar", "wPASE"}:
+            raise ValueError(
+                "Unsupported SRMP planner: "
+                f"{self.srmp_planner_id!r}; expected 'wAstar' or 'wPASE'"
+            )
         if srmp_time_limit_s is None:
             srmp_time_limit_s = getattr(env, "srmp_time_limit_s", 1.0)
         self.srmp_time_limit_s = float(max(0.01, srmp_time_limit_s))
