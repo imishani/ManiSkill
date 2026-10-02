@@ -29,24 +29,10 @@ from transforms3d import quaternions, euler
 import open3d as o3d
 
 try:
-    from pymosaic.domains.maniskill.planning.skills.skill_timing import (
-        record_motion_planner_call,
-        record_motion_planner_cache_hit,
-        record_motion_planner_cache_miss,
-        skill_timer,
-    )
-except Exception:  # pragma: no cover - ManiSkill example may run standalone.
+    from pymosaic.domains.maniskill.planning.skills.skill_timing import skill_timer
+except ImportError:  # pragma: no cover - ManiSkill example may run standalone.
     def skill_timer(skill_name, section_name):
         return nullcontext()
-
-    def record_motion_planner_call(*args, **kwargs):
-        return None
-
-    def record_motion_planner_cache_hit(*args, **kwargs):
-        return None
-
-    def record_motion_planner_cache_miss(*args, **kwargs):
-        return None
 
 
 
@@ -64,31 +50,6 @@ def _motion_result_waypoints(result):
         return int(position.shape[0])
     except Exception:
         return None
-
-
-def _round_list(values, decimals=3):
-    try:
-        arr = np.asarray(values, dtype=np.float64).reshape(-1)
-    except Exception:
-        return []
-    return [float(x) for x in np.round(arr, int(decimals)).tolist()]
-
-
-def _motion_request_key(method, current_qpos, *, pose=None, qpose=None, extra=None):
-    parts = [str(method)]
-    parts.append("q=" + repr(_round_list(current_qpos, decimals=2)))
-    if pose is not None:
-        try:
-            p = _round_list(pose.p, decimals=3)
-            q = _round_list(pose.q, decimals=3)
-            parts.append("pose=" + repr((p, q)))
-        except Exception:
-            parts.append("pose=<unavailable>")
-    if qpose is not None:
-        parts.append("goalq=" + repr(_round_list(qpose, decimals=2)))
-    if extra is not None:
-        parts.append("extra=" + str(extra))
-    return "|".join(parts)
 
 
 OPEN = 0
@@ -537,7 +498,6 @@ class RidgebackUR10ePlanningSolver:
 
         started_at = perf_counter()
         self._last_srmp_failure_detail = None
-        self._last_srmp_cache_hit = False
         start = self._move_group_qpos(current_qpos)
         gripper_qpos = self._sync_srmp_gripper_qpos(current_qpos)
         self._ensure_srmp_search_planner()
@@ -563,7 +523,6 @@ class RidgebackUR10ePlanningSolver:
         cached = self._srmp_result_cache.get(cache_key)
         if cached is not None:
             self._srmp_result_cache_hits += 1
-            self._last_srmp_cache_hit = True
             result, failure_detail = copy.deepcopy(cached)
             self._last_srmp_failure_detail = failure_detail
             if self._last_srmp_failure_detail is None:
@@ -1330,23 +1289,12 @@ class RidgebackUR10ePlanningSolver:
             # )
             mplib_pose = mplib.pymp.Pose(p=pose.p, q=pose.q)
             current_qpos = self.robot.get_qpos().cpu().numpy()[0]
-            request_key = _motion_request_key(
-                "plan_pose",
-                current_qpos,
-                pose=pose,
-                extra=(
-                    f"backend={self.motion_backend},constrain={bool(constrain)}"
-                ),
-            )
             constraint_function = self.make_f() if constrain else None
             constraint_jacobian = self.make_j() if constrain else None
 
         planning_time = 5 if constrain else 10
-        planner_method = "plan_pose"
-        solve_t0 = perf_counter()
         with skill_timer("UR10eMotionPlanner", "motion_solve"):
             if self.motion_backend == "srmp" and not constrain:
-                planner_method = "srmp_plan_pose"
                 if goal_qpos is None:
                     result = self._srmp_plan_pose(pose, current_qpos)
                 else:
@@ -1366,29 +1314,6 @@ class RidgebackUR10ePlanningSolver:
                     constraint_tolerance=0.05 if constrain else 0.001,
                     planning_time=planning_time,
                 )
-        configured_planning_time = (
-            float(getattr(self, "srmp_time_limit_s", planning_time))
-            if planner_method.startswith("srmp_")
-            else planning_time
-        )
-        record_motion_planner_call(
-            planner_method,
-            _motion_result_status(result),
-            perf_counter() - solve_t0,
-            planning_time_s=configured_planning_time,
-            waypoint_count=_motion_result_waypoints(result),
-            request_key=request_key,
-            diagnostic=(
-                self._last_srmp_failure_detail
-                if planner_method.startswith("srmp_")
-                else None
-            ),
-        )
-        if planner_method.startswith("srmp_"):
-            if getattr(self, "_last_srmp_cache_hit", False):
-                record_motion_planner_cache_hit(planner_method)
-            else:
-                record_motion_planner_cache_miss(planner_method)
         if result["status"] != "Success":
             print(result["status"])
             # self.render_wait()
@@ -1406,49 +1331,17 @@ class RidgebackUR10ePlanningSolver:
                                      refine_steps: int = 0):
         with skill_timer("UR10eMotionPlanner", "motion_request_setup"):
             current_qpos = self.robot.get_qpos().cpu().numpy()[0]
-            request_key = _motion_request_key(
-                "plan_qpos",
-                current_qpos,
-                qpose=qpose,
-                extra=f"backend={self.motion_backend}",
-            )
         planning_time = self.srmp_time_limit_s if self.motion_backend == "srmp" else 1
-        solve_t0 = perf_counter()
         with skill_timer("UR10eMotionPlanner", "motion_solve"):
             if self.motion_backend == "srmp":
-                planner_method = "srmp_plan_qpos"
                 result = self._srmp_plan_qpos(qpose, current_qpos)
             else:
-                planner_method = "plan_qpos"
                 result = self.planner.plan_qpos(
                     qpose,
                     current_qpos,
                     time_step=self.base_env.control_timestep,
                     planning_time=planning_time,
                 )
-        configured_planning_time = (
-            float(getattr(self, "srmp_time_limit_s", planning_time))
-            if planner_method.startswith("srmp_")
-            else planning_time
-        )
-        record_motion_planner_call(
-            planner_method,
-            _motion_result_status(result),
-            perf_counter() - solve_t0,
-            planning_time_s=configured_planning_time,
-            waypoint_count=_motion_result_waypoints(result),
-            request_key=request_key,
-            diagnostic=(
-                self._last_srmp_failure_detail
-                if planner_method.startswith("srmp_")
-                else None
-            ),
-        )
-        if planner_method.startswith("srmp_"):
-            if getattr(self, "_last_srmp_cache_hit", False):
-                record_motion_planner_cache_hit(planner_method)
-            else:
-                record_motion_planner_cache_miss(planner_method)
         if result["status"] != "Success":
             print(result["status"])
             # self.render_wait()
@@ -1470,19 +1363,11 @@ class RidgebackUR10ePlanningSolver:
             pose = sapien.Pose(p=pose.p , q=pose.q)
             mplib_pose = mplib.pymp.Pose(p=pose.p, q=pose.q)
             current_qpos = self.robot.get_qpos().cpu().numpy()[0]
-            request_key = _motion_request_key(
-                "plan_screw",
-                current_qpos,
-                pose=pose,
-                extra=f"wrt_world={bool(wrt_world)}",
-            )
-        solve_t0 = perf_counter()
         with skill_timer("UR10eMotionPlanner", "motion_solve"):
             if self.motion_backend == "srmp":
                 result = self._srmp_plan_screw(
                     pose, current_qpos, wrt_world=wrt_world
                 )
-                planner_method = "srmp_plan_screw"
             else:
                 result = self.planner.plan_screw(
                     mplib_pose,
@@ -1491,21 +1376,7 @@ class RidgebackUR10ePlanningSolver:
                     qpos_step=0.05,
                     wrt_world=wrt_world,
                 )
-                planner_method = "plan_screw"
-        record_motion_planner_call(
-            planner_method,
-            _motion_result_status(result),
-            perf_counter() - solve_t0,
-            waypoint_count=_motion_result_waypoints(result),
-            request_key=request_key,
-            diagnostic=(
-                self._last_srmp_failure_detail
-                if planner_method.startswith("srmp_")
-                else None
-            ),
-        )
         if result["status"] != "Success" and self.motion_backend != "srmp":
-            solve_t0 = perf_counter()
             with skill_timer("UR10eMotionPlanner", "motion_solve"):
                 result = self.planner.plan_screw(
                     mplib_pose,
@@ -1515,12 +1386,6 @@ class RidgebackUR10ePlanningSolver:
                     qpos_step=0.05,
                     wrt_world=wrt_world,
                 )
-            record_motion_planner_call(
-                "plan_screw_retry",
-                _motion_result_status(result),
-                perf_counter() - solve_t0,
-                waypoint_count=_motion_result_waypoints(result),
-            )
             if result["status"] != "Success":
                 print(result["status"])
                 # self.render_wait()
