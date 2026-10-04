@@ -118,7 +118,9 @@ class RidgebackUR10ePlanningSolver:
         self._srmp_trace_path = os.environ.get("PYMOSAIC_SRMP_TRACE_PATH")
         self._srmp_attachment_state = {}
         self._srmp_collision_world_key = None
-        self._srmp_scene_object_names = []
+        # Scene id -> ((position, quaternion), SRMP object names) for each
+        # imported actor, so a world change only touches the actors that moved.
+        self._srmp_actor_objects = {}
         self._srmp_mesh_paths = {}
         self._srmp_result_cache = {}
         self._srmp_result_cache_hits = 0
@@ -455,7 +457,9 @@ class RidgebackUR10ePlanningSolver:
         except Exception:
             pass
         return {
-            "native_scene_object_count": len(self._srmp_scene_object_names),
+            "native_scene_object_count": sum(
+                len(names) for _, names in self._srmp_actor_objects.values()
+            ),
             "collision_world_key": repr(self._srmp_collision_world_key),
             "mplib_attached_objects": mplib_attached,
             "srmp_attached_objects": dict(self._srmp_attachment_state),
@@ -969,7 +973,7 @@ class RidgebackUR10ePlanningSolver:
             srmp_name = "mosaic_attached_geom"
             if self.srmp_planner.has_object(srmp_name):
                 if self.srmp_planner.is_object_attached(srmp_name):
-                    self.srmp_planner.detach_object(srmp_name, also_remove=True)
+                    self._remove_srmp_attached(srmp_name)
                 else:
                     self.srmp_planner.remove_object(srmp_name)
             current_qpos = self.robot.get_qpos().cpu().numpy()[0]
@@ -1048,6 +1052,12 @@ class RidgebackUR10ePlanningSolver:
         self._srmp_mesh_paths[digest] = path
         return path
 
+    def _remove_srmp_attached(self, name) -> None:
+        # srmp 0.1.5: detach_object(also_remove=True) leaves the object's cells
+        # in the occupancy grid, so detach first and then remove.
+        self.srmp_planner.detach_object(name)
+        self.srmp_planner.remove_object(name)
+
     def detach_attached_mesh(self, mplib_name: Optional[str] = None) -> None:
         """Detach carried geometry from every active backend."""
         world = self.planner.planning_world
@@ -1065,7 +1075,7 @@ class RidgebackUR10ePlanningSolver:
         if self.srmp_planner is not None:
             for name in list(self._srmp_attachment_state):
                 try:
-                    self.srmp_planner.detach_object(name, also_remove=True)
+                    self._remove_srmp_attached(name)
                 except Exception:
                     pass
             self._srmp_attachment_state = {}
@@ -1079,19 +1089,19 @@ class RidgebackUR10ePlanningSolver:
             q=np.asarray(pose.q, dtype=np.float64),
         )
 
+    def _remove_srmp_actor(self, scene_id):
+        _, names = self._srmp_actor_objects.pop(scene_id)
+        for name in names:
+            if self.srmp_planner.has_object(name):
+                self.srmp_planner.remove_object(name)
+
     def _clear_srmp_scene_collisions(self):
+        # srmp 0.1.5 searches the live collision world, so objects are
+        # removed in place; the planner and robot model are kept.
         if self.srmp_planner is not None:
-            if self._srmp_search_ready:
-                # SRMP bakes the collision world into its search planner. Rebuild
-                # the native interface rather than reusing that stale state.
-                self.srmp_planner = self.setup_srmp_planner()
-                self._srmp_search_ready = False
-                self._srmp_attachment_state = {}
-            else:
-                for name in self._srmp_scene_object_names:
-                    if self.srmp_planner.has_object(name):
-                        self.srmp_planner.remove_object(name)
-        self._srmp_scene_object_names = []
+            for scene_id in list(self._srmp_actor_objects):
+                self._remove_srmp_actor(scene_id)
+        self._srmp_actor_objects = {}
         self._srmp_collision_world_key = None
         self._srmp_result_cache.clear()
 
@@ -1127,24 +1137,30 @@ class RidgebackUR10ePlanningSolver:
         if world_key == self._srmp_collision_world_key:
             return
 
-        self._clear_srmp_scene_collisions()
+        poses = {record[0]: record[1:3] for record in actor_records}
+        for scene_id, (pose_key, _) in list(self._srmp_actor_objects.items()):
+            if poses.get(scene_id) != pose_key:
+                self._remove_srmp_actor(scene_id)
         raw_actors = []
-        for _, _, _, raw in actor_records:
+        for scene_id, position, quaternion, raw in actor_records:
+            if scene_id in self._srmp_actor_objects:
+                continue
             shapes = [
                 shape
                 for component in raw.get_components()
                 for shape in getattr(component, "collision_shapes", [])
             ]
             if any(type(shape).__name__ == "PhysxCollisionShapePlane" for shape in shapes):
+                self._srmp_actor_objects[scene_id] = ((position, quaternion), [])
                 continue
-            raw_actors.append(raw)
-        before = set(self.srmp_planner.get_object_names())
-        scene = type("SRMPActorScene", (), {"get_all_actors": lambda _self: raw_actors})()
+            raw_actors.append((scene_id, raw))
+        raws = [raw for _, raw in raw_actors]
+        scene = type("SRMPActorScene", (), {"get_all_actors": lambda _self: raws})()
         imported = self.srmp_planner.read_sim(scene, "sapien")
         cylinder_axis_fix = sapien.Pose(
             q=transforms3d.euler.euler2quat(0.0, np.pi / 2.0, 0.0)
         )
-        for raw, object_names in zip(raw_actors, imported.values()):
+        for (scene_id, raw), object_names in zip(raw_actors, imported.values()):
             shapes = [
                 shape
                 for component in raw.get_components()
@@ -1161,10 +1177,9 @@ class RidgebackUR10ePlanningSolver:
                     2.0 * float(shape.half_length),
                     self._srmp_pose(pose),
                 )
-        self._srmp_scene_object_names = sorted(
-            set(self.srmp_planner.get_object_names()) - before
-        )
+            self._srmp_actor_objects[scene_id] = (poses[scene_id], list(object_names))
         self._srmp_collision_world_key = world_key
+        self._srmp_result_cache.clear()
 
     def follow_path(self, result, refine_steps: int = 0):
         n_step = result["position"].shape[0]
