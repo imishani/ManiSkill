@@ -891,8 +891,10 @@ class Articulation(BaseStruct[physx.PhysxArticulation]):
                 gx[self.scene._reset_mask[self._scene_idxs]], gy[self.scene._reset_mask[self._scene_idxs]]
             ] = targets
         else:
-            for i, joint in enumerate(joints):
-                joint.set_drive_target(targets[0, i])
+            # One conversion for all joints instead of a tensor round trip per joint.
+            values = np.asarray(common.to_numpy(targets), dtype=np.float32).reshape(-1)
+            for joint, value in zip(joints, values):
+                joint._objs[0].drive_target = value.reshape(1)
 
     def set_joint_drive_velocity_targets(
         self,
