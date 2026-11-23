@@ -224,6 +224,7 @@
     <disable_collisions link1="riser_link" link2="touchscreen" reason="Adjacent"/>
     <disable_collisions link1="riser_link" link2="ur_arm_base_link_inertia" reason="Adjacent"/>
     <disable_collisions link1="riser_link" link2="ur_arm_shoulder_link" reason="Never"/>
+    <disable_collisions link1="riser_link" link2="ur_arm_upper_arm_link" reason="Never"/>
     <disable_collisions link1="riser_link" link2="ur_controlbox" reason="Adjacent"/>
     <disable_collisions link1="riser_link" link2="wifi1_antenna" reason="Adjacent"/>
     <disable_collisions link1="riser_link" link2="wifi2_antenna" reason="Adjacent"/>

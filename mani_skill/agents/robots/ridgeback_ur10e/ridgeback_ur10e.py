@@ -81,7 +81,13 @@ class RidgebackUR10e(BaseAgent):
         ]
         self.arm_stiffness = 1e3
         self.arm_damping = 1e2
-        self.arm_force_limit = 100
+        # Per joint, from static_ridgeback_ur10e.urdf's own <limit effort=...>,
+        # in arm_joint_names order (shoulder_pan, shoulder_lift, elbow,
+        # wrist_1, wrist_2, wrist_3). A single scalar 100 clamped the two
+        # shoulder joints -- the ones carrying the gravity load -- to 30% of
+        # the torque the model says they have, while handing the 56 N.m wrists
+        # nearly double theirs.
+        self.arm_force_limit = [330.0, 330.0, 150.0, 56.0, 56.0, 56.0]
 
         self.gripper_joint_names = [
             "finger_joint",
@@ -545,7 +551,13 @@ class StaticRidgebackUR10e(BaseAgent):
         ]
         self.arm_stiffness = 1e3
         self.arm_damping = 1e2
-        self.arm_force_limit = 100
+        # Per joint, from static_ridgeback_ur10e.urdf's own <limit effort=...>,
+        # in arm_joint_names order (shoulder_pan, shoulder_lift, elbow,
+        # wrist_1, wrist_2, wrist_3). A single scalar 100 clamped the two
+        # shoulder joints -- the ones carrying the gravity load -- to 30% of
+        # the torque the model says they have, while handing the 56 N.m wrists
+        # nearly double theirs.
+        self.arm_force_limit = [330.0, 330.0, 150.0, 56.0, 56.0, 56.0]
 
         self.gripper_joint_names = [
             "finger_joint",

@@ -139,22 +139,12 @@ class KinovaGen3_2F85(BaseAgent):
             force_limit=self.arm_force_limit,
             ee_link=self.ee_link_name,
             urdf_path=self.urdf_path,
-            frame="body_translation:body_aligned_body_rotation",
-            cpu_differential_ik=True,
-            differential_joint_target=True,
-            max_differential_target_lag=1.0,
-            delta_solver_config=dict(
-                type="levenberg_marquardt", alpha=1.0, damping=1e-3, max_joint_delta=0.08
-            ),
         )
 
         arm_pd_ee_target_delta_pos = deepcopy(arm_pd_ee_delta_pos)
         arm_pd_ee_target_delta_pos.use_target = True
         arm_pd_ee_target_delta_pose = deepcopy(arm_pd_ee_delta_pose)
         arm_pd_ee_target_delta_pose.use_target = True
-        arm_pd_ee_target_delta_pose.frame = "root_translation:root_aligned_body_rotation"
-        arm_pd_ee_target_delta_pose.cpu_differential_ik = False
-        arm_pd_ee_target_delta_pose.differential_joint_target = False
 
         arm_pd_joint_vel = PDJointVelControllerConfig(
             self.arm_joint_names,

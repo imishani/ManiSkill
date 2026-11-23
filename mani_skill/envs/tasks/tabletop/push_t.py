@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 import numpy as np
 import sapien
@@ -80,7 +80,7 @@ class PushTEnv(BaseEnv):
     - The T block covers 90% of the 2D goal T's area
     """
 
-    _sample_video_link = "https://github.com/haosulab/ManiSkill/raw/main/figures/environment_demos/PushT-v1_rt.mp4"
+    _sample_video_link = "https://github.com/mani-skill/ManiSkill/raw/main/figures/environment_demos/PushT-v1_rt.mp4"
     SUPPORTED_ROBOTS = ["panda_stick"]
     agent: PandaStick
 
@@ -489,7 +489,7 @@ class PushTEnv(BaseEnv):
 
         return {"success": success}
 
-    def _get_obs_extra(self, info: Dict):
+    def _get_obs_extra(self, info: dict):
         # ee position is super useful for pandastick robot
         obs = dict(
             tcp_pose=self.agent.tcp.pose.raw_pose,
@@ -502,7 +502,7 @@ class PushTEnv(BaseEnv):
             )
         return obs
 
-    def compute_dense_reward(self, obs: Any, action: Array, info: Dict):
+    def compute_dense_reward(self, obs: Any, action: Array, info: dict):
         # reward for overlap of the tees
 
         # legacy reward
@@ -533,6 +533,6 @@ class PushTEnv(BaseEnv):
         reward[info["success"]] = 3
         return reward
 
-    def compute_normalized_dense_reward(self, obs: Any, action: Array, info: Dict):
+    def compute_normalized_dense_reward(self, obs: Any, action: Array, info: dict):
         max_reward = 3.0
         return self.compute_dense_reward(obs=obs, action=action, info=info) / max_reward

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Optional, Sequence, Union
+from typing import TYPE_CHECKING, Optional, Sequence, Union
 
 import numpy as np
 import sapien
@@ -30,6 +30,10 @@ class ArticulationBuilder(SapienArticulationBuilder):
         self.scene_idxs = None
         self.initial_pose = None
 
+    def set_scene(self, scene: ManiSkillScene):
+        self.scene = scene
+        return self
+
     def set_name(self, name: str):
         self.name = name
         return self
@@ -37,7 +41,7 @@ class ArticulationBuilder(SapienArticulationBuilder):
     def set_scene_idxs(
         self,
         scene_idxs: Optional[
-            Union[List[int], Sequence[int], torch.Tensor, np.ndarray]
+            Union[list[int], Sequence[int], torch.Tensor, np.ndarray]
         ] = None,
     ):
         """
@@ -149,7 +153,7 @@ class ArticulationBuilder(SapienArticulationBuilder):
                 articulation_pose = to_sapien_pose(initial_pose_np)
             else:
                 articulation_pose = to_sapien_pose(initial_pose_np[i])
-            links: List[sapien.Entity] = self._build_entities(
+            links: list[sapien.Entity] = self._build_entities(
                 name_prefix=f"scene-{scene_idx}-{self.name}_",
                 initial_pose=articulation_pose,
             )
